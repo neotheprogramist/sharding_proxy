@@ -146,7 +146,9 @@ pub mod sharding {
                 };
 
                 // Call update on the specific contract
-                let contract_dispatcher = ITestContractDispatcher { contract_address: contract_address };
+                let contract_dispatcher = ITestContractDispatcher {
+                    contract_address: contract_address,
+                };
                 contract_dispatcher.update(contract.storage_changes.span());
 
                 // After updating, unlock the slots for this contract
