@@ -36,8 +36,9 @@ pub mod sharding {
     use super::ISharding;
     use super::StorageSlotWithContract;
 
-    use sharding_tests::game_contract::IGameContractDispatcher;
-    use sharding_tests::game_contract::IGameContractDispatcherTrait;
+    // use sharding_tests::test_contract::ITestContract;
+    use sharding_tests::test_contract::ITestContractDispatcher;
+    use sharding_tests::test_contract::ITestContractDispatcherTrait;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(
@@ -140,15 +141,12 @@ pub mod sharding {
                     let slot = StorageSlotWithContract {
                         contract_address: contract_address, slot: storage_key,
                     };
-
                     // Check if this storage slot is locked
                     assert(self.initialized_storage.read(slot), Errors::STORAGE_UNLOCKED);
                 };
 
                 // Call update on the specific contract
-                let contract_dispatcher = IGameContractDispatcher {
-                    contract_address: contract_address,
-                };
+                let contract_dispatcher = ITestContractDispatcher { contract_address: contract_address };
                 contract_dispatcher.update(contract.storage_changes.span());
 
                 // After updating, unlock the slots for this contract
