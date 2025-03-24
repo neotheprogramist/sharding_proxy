@@ -1,6 +1,0 @@
-#!/bin/bash
-
-sncast call \
-  --contract-address 0xc808a9299fc54330548bb404054bc91a60e1b7df0b396ae7c103cd617be86d \
-  --function "allowance" \
-  --calldata 0x1bb3c8499f3c577232c691bc3503e74cc8af9aa9015335634ff635585615069 0x64b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691 \
