@@ -1,14 +1,24 @@
 use starknet::{ContractAddress};
 
+#[derive(Drop, Serde, starknet::Store, Hash, Copy)]
+pub struct StorageSlotWithContract {
+    pub contract_address: ContractAddress,
+    pub slot: felt252,
+}
+
 #[starknet::interface]
 pub trait ISharding<TContractState> {
-    fn initialize(ref self: TContractState);
+    fn initialize_shard(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
     fn update_state(
         ref self: TContractState,         
         snos_output: Span<felt252>,
-        base_contract_address: ContractAddress,
     );
+}
+
+#[starknet::interface]
+pub trait IState<TContractState> {
+    fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 }
 
 #[starknet::contract]
@@ -38,6 +48,11 @@ pub mod sharding {
     use sharding_tests::state::{IState, state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
     use core::starknet::SyscallResultTrait;
     use super::ISharding;
+    use super::StorageSlotWithContract;
+
+    use sharding_tests::game_contract::IGameContract;
+    use sharding_tests::game_contract::IGameContractDispatcher;
+    use sharding_tests::game_contract::IGameContractDispatcherTrait;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent);
@@ -48,7 +63,7 @@ pub mod sharding {
 
     #[storage]
     struct Storage {
-        initialized_storage: Map<felt252, bool>,
+        initialized_storage: Map<StorageSlotWithContract, bool>,
         owner: ContractAddress,
         shard_root: felt252,
         shard_hash: felt252,
@@ -91,6 +106,7 @@ pub mod sharding {
         pub const ALREADY_INITIALIZED: felt252 = 'Sharding: already initialized';
         pub const NOT_INITIALIZED: felt252 = 'Sharding: not initialized';
         pub const STORAGE_LOCKED: felt252 = 'Sharding: storage is locked';
+        pub const STORAGE_UNLOCKED: felt252 = 'Sharding: storage is unlocked';
     }
 
     #[constructor]
@@ -107,35 +123,62 @@ pub mod sharding {
 
     #[abi(embed_v0)]
     impl ShardingImpl of ISharding<ContractState> {
-        fn initialize(ref self: ContractState) {
+        fn initialize_shard(ref self: ContractState, storage_slots: Span<StorageSlotWithContract>) {
 
-            // Lock critical storage slots
-            let owner_key = self.owner.__base_address__;
-            let shard_root_key = self.shard_root.__base_address__;
-            let shard_hash_key = self.shard_hash.__base_address__;
+            // assert(self.initialized_storage.len() == 0, Errors::ALREADY_INITIALIZED); //todo
 
-            // Check if already initialized
-            assert(!self.initialized_storage.read(owner_key), Errors::ALREADY_INITIALIZED);
-            assert(!self.initialized_storage.read(shard_root_key), Errors::ALREADY_INITIALIZED);
-            assert(!self.initialized_storage.read(shard_hash_key), Errors::ALREADY_INITIALIZED);
-            
-            self.initialized_storage.write(owner_key, true);
-            self.initialized_storage.write(shard_root_key, true);
-            self.initialized_storage.write(shard_hash_key, true);
+            for i in 0..storage_slots.len() {
+                let storage_slot = *storage_slots.at(i);
+                // Lock this storage key
+                self.initialized_storage.write(storage_slot, true);
+                println!("Locking storage key: {}", storage_slot.slot);
+            };
             
             // Emit initialization event
             let caller = get_caller_address();
-            
             self.emit(ContractInitialized { initializer: caller });
         }
         
         fn update_state(ref self: ContractState,      
             snos_output: Span<felt252>,
-            base_contract_address: ContractAddress,
         ) {
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
-            self.state.update(program_output_struct);
+
+            for contract in program_output_struct.state_diff.contracts.span() {
+                let contract_address: ContractAddress = (*contract.addr).try_into().expect('Invalid contract address');
+                
+                for storage_change in contract.storage_changes.span() {
+                    let (storage_key, _storage_value) = *storage_change;
+                    
+                    // Create a StorageSlot to check if it's locked
+                    let slot = StorageSlotWithContract {
+                        contract_address: contract_address,
+                        slot: storage_key,
+                    };
+                    
+                    // Check if this storage slot is locked
+                    assert(self.initialized_storage.read(slot), Errors::STORAGE_UNLOCKED);
+                    
+                };
+                
+                // Call update on the specific contract
+                let contract_dispatcher = IGameContractDispatcher { contract_address: contract_address };
+                contract_dispatcher.update(contract.storage_changes.span());
+                
+                // After updating, unlock the slots for this contract
+                for storage_change in contract.storage_changes.span() {
+                    let (storage_key, _storage_value) = *storage_change;
+                    
+                    // Create a StorageSlot to unlock
+                    let slot = StorageSlotWithContract {
+                        contract_address: contract_address,
+                        slot: storage_key,
+                    };
+                    
+                    self.initialized_storage.write(slot, false);
+                }
+            }
         }
     }
 }
