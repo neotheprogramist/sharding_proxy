@@ -28,9 +28,8 @@ mod errors {
 #[starknet::component]
 pub mod state_cpt {
     use sharding_tests::snos_output::StarknetOsOutput;
-    use super::IState; 
+    use super::IState;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use super::errors;
 
     type StateRoot = felt252;
     type BlockNumber = felt252;
@@ -51,9 +50,7 @@ pub mod state_cpt {
     impl State<
         TContractState, +HasComponent<TContractState>,
     > of IState<ComponentState<TContractState>> {
-        fn update(ref self: ComponentState<TContractState>, program_output: StarknetOsOutput) {
-    
-        }
+        fn update(ref self: ComponentState<TContractState>, program_output: StarknetOsOutput) {}
         fn get_state(self: @ComponentState<TContractState>) -> (StateRoot, BlockNumber, BlockHash) {
             (self.state_root.read(), self.block_number.read(), self.block_hash.read())
         }
