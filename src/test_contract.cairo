@@ -5,50 +5,34 @@ use sharding_tests::sharding::StorageSlotWithContract;
 pub trait ITestContract<TContractState> {
     fn initialize_test(ref self: TContractState, sharding_contract_address: ContractAddress);
 
-    fn update(
-        ref self: TContractState,         
-        storage_changes: Span<(felt252, felt252)>,
-    );
+    fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 
-    fn get_storage_slots(ref self: TContractState, test_contract_address: felt252) -> Array<StorageSlotWithContract>;
+    fn get_storage_slots(
+        ref self: TContractState, test_contract_address: felt252,
+    ) -> Array<StorageSlotWithContract>;
 }
 
 #[starknet::contract]
 pub mod test_contract {
-    use core::iter::IntoIterator;
-    use core::poseidon::{PoseidonImpl, poseidon_hash_span};
+    use core::poseidon::{PoseidonImpl};
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
-    use openzeppelin::security::reentrancyguard::{
-        ReentrancyGuardComponent,
-        ReentrancyGuardComponent::InternalTrait as InternalReentrancyGuardImpl,
-    };
-    use openzeppelin::upgrades::{
-        UpgradeableComponent as upgradeable_cpt,
-        UpgradeableComponent::InternalTrait as UpgradeableInternal, interface::IUpgradeable,
-    };
-    use starknet::{
-        get_caller_address, get_contract_address, ContractAddress,
-        storage::{
-            StoragePointerReadAccess, StoragePointerWriteAccess, StorageMapReadAccess,
-            StorageMapWriteAccess, Map
-        }
-    };
-    use starknet::{ClassHash};
-    use sharding_tests::snos_output::deserialize_os_output;
-    use sharding_tests::state::{IState, state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
+    use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
+    use starknet::{get_contract_address, ContractAddress, storage::Map};
+    use sharding_tests::state::{state_cpt::InternalImpl};
     use core::starknet::SyscallResultTrait;
     use super::ITestContract;
     use sharding_tests::sharding::StorageSlotWithContract;
     use sharding_tests::sharding::IShardingDispatcher;
     use sharding_tests::sharding::IShardingDispatcherTrait;
-    use starknet::syscalls::storage_read_syscall;
     use starknet::syscalls::storage_write_syscall;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
-    component!(path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent);
-    
+    component!(
+        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
+    );
+
     #[storage]
     struct Storage {
         owner: ContractAddress,
@@ -88,10 +72,7 @@ pub mod test_contract {
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-    ) {
+    fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.ownable.initializer(owner);
     }
 
@@ -99,27 +80,29 @@ pub mod test_contract {
     impl TestContractImpl of ITestContract<ContractState> {
         fn initialize_test(ref self: ContractState, sharding_contract_address: ContractAddress) {
             // Emit initialization event
-            let sharding_dispatcher = IShardingDispatcher { contract_address: sharding_contract_address };
-            sharding_dispatcher.initialize_shard(self.get_storage_slots(get_contract_address().into()).span());
-
+            let sharding_dispatcher = IShardingDispatcher {
+                contract_address: sharding_contract_address,
+            };
+            sharding_dispatcher
+                .initialize_shard(self.get_storage_slots(get_contract_address().into()).span());
         }
-        
-        fn update(ref self: ContractState,      
-            storage_changes: Span<(felt252, felt252)>,
-        ) {
+
+        fn update(ref self: ContractState, storage_changes: Span<(felt252, felt252)>) {
             let mut i: usize = 0;
             while i < storage_changes.len() {
                 let (key, value) = *storage_changes.at(i);
-                
+
                 storage_write_syscall(0, key.try_into().unwrap(), value).unwrap_syscall();
-                
+
                 i += 1;
             };
-            
+
             self.emit(TestContractUpdated { storage_changes });
         }
 
-        fn get_storage_slots(ref self: ContractState, test_contract_address: felt252) -> Array<StorageSlotWithContract> {
+        fn get_storage_slots(
+            ref self: ContractState, test_contract_address: felt252,
+        ) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
                     contract_address: test_contract_address.try_into().unwrap(),
@@ -147,6 +130,5 @@ pub mod test_contract {
                 },
             ]
         }
-        
     }
 }

@@ -8,48 +8,30 @@ pub struct StorageSlot {
 
 #[starknet::interface]
 pub trait IGameContract<TContractState> {
-    fn initialize_game(ref self: TContractState); //here we should lock the storage slots for the game contract
+    fn initialize_game(
+        ref self: TContractState,
+    ); //here we should lock the storage slots for the game contract
 
-    fn update(
-        ref self: TContractState,         
-        storage_changes: Span<(felt252, felt252)>,
-    );
+    fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 
     fn increment(ref self: TContractState);
 }
 
 #[starknet::contract]
 pub mod game_contract {
-    use core::iter::IntoIterator;
-    use core::poseidon::{PoseidonImpl, poseidon_hash_span};
+    use core::poseidon::PoseidonImpl;
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
-    use openzeppelin::security::reentrancyguard::{
-        ReentrancyGuardComponent,
-        ReentrancyGuardComponent::InternalTrait as InternalReentrancyGuardImpl,
-    };
-    use openzeppelin::upgrades::{
-        UpgradeableComponent as upgradeable_cpt,
-        UpgradeableComponent::InternalTrait as UpgradeableInternal, interface::IUpgradeable,
-    };
+    use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
     use starknet::{
-        get_caller_address, get_contract_address, ContractAddress,
-        storage::{
-            StoragePointerReadAccess, StoragePointerWriteAccess, StorageMapReadAccess,
-            StorageMapWriteAccess, Map
-        }
+        get_caller_address, ContractAddress,
+        storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
     };
-    use starknet::{ClassHash};
-    use sharding_tests::snos_output::deserialize_os_output;
-    use sharding_tests::state::{IState, state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
-    use core::starknet::SyscallResultTrait;
+    use sharding_tests::state::{state_cpt, state_cpt::InternalImpl};
     use super::IGameContract;
-    use super::StorageSlot;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
-    // component!(path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent);
-    // component!(path: state_cpt, storage: state, event: StateEvent);
 
     #[storage]
     struct Storage {
@@ -60,7 +42,7 @@ pub mod game_contract {
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         // #[substorage(v0)]
-        // reentrancy_guard: ReentrancyGuardComponent::Storage,
+    // reentrancy_guard: ReentrancyGuardComponent::Storage,
     }
 
     #[event]
@@ -100,10 +82,7 @@ pub mod game_contract {
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-    ) {
+    fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.ownable.initializer(owner);
     }
 
@@ -114,17 +93,12 @@ pub mod game_contract {
             let caller = get_caller_address();
             self.emit(GameContractInitialized { initializer: caller });
         }
-        
-        fn update(ref self: ContractState,      
-            storage_changes: Span<(felt252, felt252)>,
-        ) {
 
-        }
+        fn update(ref self: ContractState, storage_changes: Span<(felt252, felt252)>) {}
 
         fn increment(ref self: ContractState) {
-            
             self.counter.write(self.counter.read() + 1);
-            
+
             let caller = get_caller_address();
             self.emit(Increment { caller });
 

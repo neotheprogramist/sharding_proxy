@@ -130,10 +130,7 @@ pub fn deserialize_os_output(ref input_iter: SpanIter<felt252>) -> StarknetOsOut
         full_output: *full_output,
         messages_to_l1: messages_to_l1,
         messages_to_l2: messages_to_l2,
-        state_diff: StateDiff {
-            contracts,
-            classes,
-        }
+        state_diff: StateDiff { contracts, classes },
     }
 }
 
@@ -179,7 +176,9 @@ fn deserialize_contract_state_inner(
     let flag_bound: u256 = 2; // 2^1
 
     let addr = *(input_iter.next().unwrap());
-    let nonce_n_changes_two_flags: u256 = (*(input_iter.next().unwrap())).try_into().expect('Invalid value');
+    let nonce_n_changes_two_flags: u256 = (*(input_iter.next().unwrap()))
+        .try_into()
+        .expect('Invalid value');
 
     // let value: u256 = (*(input_iter.next().unwrap())).try_into().expect('Invalid value');
     let nonce_n_changes_one_flag = nonce_n_changes_two_flags / flag_bound;
@@ -187,7 +186,11 @@ fn deserialize_contract_state_inner(
     let nonce_n_changes = nonce_n_changes_one_flag / flag_bound;
     let is_n_updates_small = nonce_n_changes_one_flag % flag_bound;
 
-    let n_updates_bound = if is_n_updates_small == 1 {n_updates_small_packing_bound} else {bound};
+    let n_updates_bound = if is_n_updates_small == 1 {
+        n_updates_small_packing_bound
+    } else {
+        bound
+    };
     let nonce = nonce_n_changes / n_updates_bound;
     let n_changes = nonce_n_changes % n_updates_bound;
 
@@ -209,7 +212,9 @@ fn deserialize_contract_state_inner(
         }
     };
 
-    let storage_changes = deserialize_da_changes(ref input_iter, n_changes.try_into().unwrap(), full_output);
+    let storage_changes = deserialize_da_changes(
+        ref input_iter, n_changes.try_into().unwrap(), full_output,
+    );
     ContractChanges {
         addr: addr,
         nonce: new_state_nonce.try_into().unwrap(),

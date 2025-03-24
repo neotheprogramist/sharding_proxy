@@ -1,22 +1,17 @@
 use snforge_std::EventSpyTrait;
-use starknet::ContractAddress;
 use core::traits::Into;
-use core::option::OptionTrait;
 use core::result::ResultTrait;
-use core::array::SpanTrait;
 use core::iter::IntoIterator;
-use core::poseidon::{PoseidonImpl, poseidon_hash_span};
+use core::poseidon::PoseidonImpl;
 use openzeppelin_testing::constants as c;
 use snforge_std as snf;
-use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
+use snforge_std::{ContractClassTrait, EventSpy};
 
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
 use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
-use sharding_tests::test_contract::ITestContract;
 use sharding_tests::test_contract::ITestContractDispatcher;
 use sharding_tests::test_contract::ITestContractDispatcherTrait;
-use sharding_tests::sharding::StorageSlotWithContract;
 
 fn deploy_with_owner_and_state(
     owner: felt252, state_root: felt252, block_number: felt252, block_hash: felt252,

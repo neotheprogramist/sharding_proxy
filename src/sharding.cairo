@@ -10,10 +10,7 @@ pub struct StorageSlotWithContract {
 pub trait ISharding<TContractState> {
     fn initialize_shard(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
-    fn update_state(
-        ref self: TContractState,         
-        snos_output: Span<felt252>,
-    );
+    fn update_state(ref self: TContractState, snos_output: Span<felt252>);
 }
 
 #[starknet::interface]
@@ -24,40 +21,30 @@ pub trait IState<TContractState> {
 #[starknet::contract]
 pub mod sharding {
     use core::iter::IntoIterator;
-    use core::poseidon::{PoseidonImpl, poseidon_hash_span};
+    use core::poseidon::{PoseidonImpl};
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
-    use openzeppelin::security::reentrancyguard::{
-        ReentrancyGuardComponent,
-        ReentrancyGuardComponent::InternalTrait as InternalReentrancyGuardImpl,
-    };
-    use openzeppelin::upgrades::{
-        UpgradeableComponent as upgradeable_cpt,
-        UpgradeableComponent::InternalTrait as UpgradeableInternal, interface::IUpgradeable,
-    };
+    use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
+
     use starknet::{
-        get_caller_address, get_contract_address, ContractAddress,
-        storage::{
-            StoragePointerReadAccess, StoragePointerWriteAccess, StorageMapReadAccess,
-            StorageMapWriteAccess, Map
-        }
+        get_caller_address, ContractAddress,
+        storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
-    use starknet::{ClassHash};
     use sharding_tests::snos_output::deserialize_os_output;
-    use sharding_tests::state::{IState, state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
-    use core::starknet::SyscallResultTrait;
+    use sharding_tests::state::{state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
     use super::ISharding;
     use super::StorageSlotWithContract;
 
-    use sharding_tests::game_contract::IGameContract;
     use sharding_tests::game_contract::IGameContractDispatcher;
     use sharding_tests::game_contract::IGameContractDispatcherTrait;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
-    component!(path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent);
+    component!(
+        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
+    );
     component!(path: state_cpt, storage: state, event: StateEvent);
-    
+
     #[abi(embed_v0)]
     impl StateImpl = state_cpt::StateImpl<ContractState>;
 
@@ -124,58 +111,55 @@ pub mod sharding {
     #[abi(embed_v0)]
     impl ShardingImpl of ISharding<ContractState> {
         fn initialize_shard(ref self: ContractState, storage_slots: Span<StorageSlotWithContract>) {
-
             // assert(self.initialized_storage.len() == 0, Errors::ALREADY_INITIALIZED); //todo
 
             for i in 0..storage_slots.len() {
                 let storage_slot = *storage_slots.at(i);
                 // Lock this storage key
                 self.initialized_storage.write(storage_slot, true);
-                println!("Locking storage key: {}", storage_slot.slot);
             };
-            
+
             // Emit initialization event
             let caller = get_caller_address();
             self.emit(ContractInitialized { initializer: caller });
         }
-        
-        fn update_state(ref self: ContractState,      
-            snos_output: Span<felt252>,
-        ) {
+
+        fn update_state(ref self: ContractState, snos_output: Span<felt252>) {
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
 
             for contract in program_output_struct.state_diff.contracts.span() {
-                let contract_address: ContractAddress = (*contract.addr).try_into().expect('Invalid contract address');
-                
+                let contract_address: ContractAddress = (*contract.addr)
+                    .try_into()
+                    .expect('Invalid contract address');
+
                 for storage_change in contract.storage_changes.span() {
                     let (storage_key, _storage_value) = *storage_change;
-                    
+
                     // Create a StorageSlot to check if it's locked
                     let slot = StorageSlotWithContract {
-                        contract_address: contract_address,
-                        slot: storage_key,
+                        contract_address: contract_address, slot: storage_key,
                     };
-                    
+
                     // Check if this storage slot is locked
                     assert(self.initialized_storage.read(slot), Errors::STORAGE_UNLOCKED);
-                    
                 };
-                
+
                 // Call update on the specific contract
-                let contract_dispatcher = IGameContractDispatcher { contract_address: contract_address };
+                let contract_dispatcher = IGameContractDispatcher {
+                    contract_address: contract_address,
+                };
                 contract_dispatcher.update(contract.storage_changes.span());
-                
+
                 // After updating, unlock the slots for this contract
                 for storage_change in contract.storage_changes.span() {
                     let (storage_key, _storage_value) = *storage_change;
-                    
+
                     // Create a StorageSlot to unlock
                     let slot = StorageSlotWithContract {
-                        contract_address: contract_address,
-                        slot: storage_key,
+                        contract_address: contract_address, slot: storage_key,
                     };
-                    
+
                     self.initialized_storage.write(slot, false);
                 }
             }
