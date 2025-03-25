@@ -15,8 +15,13 @@ snforge_std = "0.34.0"
 snforge_std = "0.34.0"
 assert_macros = "2.9.2"
 
+[lib]
+
 [[target.starknet-contract]]
 sierra = true
 
 [scripts]
 test = "snforge test"
+
+[features]
+slot_test = []

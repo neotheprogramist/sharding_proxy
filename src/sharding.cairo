@@ -36,9 +36,8 @@ pub mod sharding {
     use super::ISharding;
     use super::StorageSlotWithContract;
 
-    // use sharding_tests::test_contract::ITestContract;
-    use sharding_tests::test_contract::ITestContractDispatcher;
-    use sharding_tests::test_contract::ITestContractDispatcherTrait;
+    use sharding_tests::contract_component::IContractComponentDispatcher;
+    use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(
@@ -134,22 +133,26 @@ pub mod sharding {
                     .try_into()
                     .expect('Invalid contract address');
 
+                let mut slots_to_change = ArrayTrait::new();
+
                 for storage_change in contract.storage_changes.span() {
-                    let (storage_key, _storage_value) = *storage_change;
+                    let (storage_key, storage_value) = *storage_change;
 
                     // Create a StorageSlot to check if it's locked
                     let slot = StorageSlotWithContract {
                         contract_address: contract_address, slot: storage_key,
                     };
-                    // Check if this storage slot is locked
-                    assert(self.initialized_storage.read(slot), Errors::STORAGE_UNLOCKED);
+                    if self.initialized_storage.read(slot) {
+                        slots_to_change.append((storage_key, storage_value));
+                    }
                 };
 
                 // Call update on the specific contract
-                let contract_dispatcher = ITestContractDispatcher {
+                let contract_dispatcher = IContractComponentDispatcher {
                     contract_address: contract_address,
                 };
-                contract_dispatcher.update(contract.storage_changes.span());
+
+                contract_dispatcher.update_shard(slots_to_change.span());
 
                 // After updating, unlock the slots for this contract
                 for storage_change in contract.storage_changes.span() {

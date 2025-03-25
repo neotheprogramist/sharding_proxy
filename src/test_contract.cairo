@@ -7,9 +7,14 @@ pub trait ITestContract<TContractState> {
 
     fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 
-    fn get_storage_slots(
-        ref self: TContractState, test_contract_address: felt252,
-    ) -> Array<StorageSlotWithContract>;
+    fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
+
+    fn increment(ref self: TContractState);
+
+    fn get_counter(ref self: TContractState) -> felt252;
+
+    // #[cfg(feature: 'slot_test')]
+    fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 }
 
 #[starknet::contract]
@@ -19,7 +24,7 @@ pub mod test_contract {
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
     use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
-    use starknet::{get_contract_address, ContractAddress, storage::Map};
+    use starknet::{get_contract_address, ContractAddress};
     use sharding_tests::state::{state_cpt::InternalImpl};
     use core::starknet::SyscallResultTrait;
     use super::ITestContract;
@@ -27,31 +32,55 @@ pub mod test_contract {
     use sharding_tests::sharding::IShardingDispatcher;
     use sharding_tests::sharding::IShardingDispatcherTrait;
     use starknet::syscalls::storage_write_syscall;
+    use sharding_tests::contract_component::contract_component;
+
+    // #[cfg(feature: 'slot_test')]
+    use starknet::syscalls::storage_read_syscall;
+
+    use starknet::{
+        get_caller_address, storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
+        event::EventEmitter,
+    };
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(
         path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
     );
+    component!(
+        path: contract_component, storage: contract_component, event: ContractComponentEvent,
+    );
+
+    #[abi(embed_v0)]
+    impl ContractComponentImpl =
+        contract_component::ContractComponentImpl<ContractState>;
+
+    impl ContractComponentInternalImpl = contract_component::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
         owner: ContractAddress,
-        storage_values: Map<felt252, felt252>,
+        counter: felt252,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
         reentrancy_guard: ReentrancyGuardComponent::Storage,
+        #[substorage(v0)]
+        contract_component: contract_component::Storage,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         TestContractInitialized: TestContractInitialized,
+        Increment: Increment,
+        GameFinished: GameFinished,
         TestContractUpdated: TestContractUpdated,
         #[flat]
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
+        #[flat]
+        ContractComponentEvent: contract_component::Event,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -62,6 +91,16 @@ pub mod test_contract {
     #[derive(Drop, starknet::Event)]
     pub struct TestContractUpdated {
         pub storage_changes: Span<(felt252, felt252)>,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct Increment {
+        pub caller: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct GameFinished {
+        pub caller: ContractAddress,
     }
 
     pub mod Errors {
@@ -83,8 +122,7 @@ pub mod test_contract {
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
-            sharding_dispatcher
-                .initialize_shard(self.get_storage_slots(get_contract_address().into()).span());
+            sharding_dispatcher.initialize_shard(self.get_storage_slots().span());
         }
 
         fn update(ref self: ContractState, storage_changes: Span<(felt252, felt252)>) {
@@ -100,35 +138,32 @@ pub mod test_contract {
             self.emit(TestContractUpdated { storage_changes });
         }
 
-        fn get_storage_slots(
-            ref self: ContractState, test_contract_address: felt252,
-        ) -> Array<StorageSlotWithContract> {
+        fn increment(ref self: ContractState) {
+            self.counter.write(self.counter.read() + 1);
+
+            let caller = get_caller_address();
+            self.emit(Increment { caller });
+
+            if self.counter.read() == 3 {
+                self.emit(GameFinished { caller });
+            }
+        }
+
+        fn get_counter(ref self: ContractState) -> felt252 {
+            self.counter.read()
+        }
+
+        fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
-                },
-                StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 3488041066649332616440110253331181934927363442882040970594983370166361489161,
-                },
-                StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 289565229787362368933081636443797405535488074065834425092593015835915391953,
-                },
-                StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 1129664241071644691371073118594794953592340198277473102285062464307545102410,
-                },
-                StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 1239149872729906871793169171313897310809028090219849129902089947133222824240,
-                },
-                StorageSlotWithContract {
-                    contract_address: test_contract_address.try_into().unwrap(),
-                    slot: 1804974537427402286278400303388660593172206410421526189703894999503593972097,
+                    contract_address: get_contract_address().into(), slot: selector!("counter"),
                 },
             ]
+        }
+
+        // #[cfg(feature: 'slot_test')]
+        fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
+            storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
     }
 }
