@@ -12,6 +12,8 @@ use sharding_tests::sharding::IShardingDispatcherTrait;
 use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
 use sharding_tests::test_contract::ITestContractDispatcher;
 use sharding_tests::test_contract::ITestContractDispatcherTrait;
+use sharding_tests::contract_component::IContractComponentDispatcher;
+use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 
 fn deploy_with_owner_and_state(
     owner: felt252, state_root: felt252, block_number: felt252, block_hash: felt252,
@@ -30,7 +32,7 @@ fn deploy_with_owner_and_state(
     (IShardingDispatcher { contract_address }, spy)
 }
 
-fn deploy_with_owner(owner: felt252) -> (ITestContractDispatcher, EventSpy) {
+fn deploy_with_owner(owner: felt252) -> ((IContractComponentDispatcher, ITestContractDispatcher), EventSpy) {
     let contract = match snf::declare("test_contract").unwrap() {
         snf::DeclareResult::Success(contract) => contract,
         _ => core::panic_with_felt252('AlreadyDeclared not expected'),
@@ -41,7 +43,10 @@ fn deploy_with_owner(owner: felt252) -> (ITestContractDispatcher, EventSpy) {
     println!("contract_address: 0x{:x}", contract_address);
     let mut spy = snf::spy_events();
 
-    (ITestContractDispatcher { contract_address }, spy)
+    (
+        (IContractComponentDispatcher { contract_address }, ITestContractDispatcher { contract_address }),
+        spy
+    )
 }
 
 
@@ -112,34 +117,37 @@ fn test_update_state() {
         block_hash: 0,
     );
 
-    let (test_contract, mut test_spy) = deploy_with_owner(owner: c::OWNER().into());
+    let ((test_contract_dispatcher, contract_component_dispatcher), mut test_spy) = deploy_with_owner(owner: c::OWNER().into());
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
-    let test_dispatcher = ITestContractDispatcher {
-        contract_address: test_contract.contract_address,
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract_dispatcher.contract_address,
+    };
+    let contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: contract_component_dispatcher.contract_address,
     };
 
-    let mut felts = get_state_update(test_contract.contract_address.into()).span().into_iter();
+    let mut felts = get_state_update(test_contract_dispatcher.contract_address.into()).span().into_iter();
     let output: StarknetOsOutput = deserialize_os_output(ref felts);
     println!("output: {:?}", output);
 
-    let snos_output = get_state_update(test_contract.contract_address.into());
+    let snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
 
-    snf::start_cheat_caller_address(test_dispatcher.contract_address, c::OWNER());
-    test_dispatcher.initialize_test(shard_dispatcher.contract_address);
+    snf::start_cheat_caller_address(contract_component_dispatcher.contract_address, c::OWNER());
+    contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
 
     snf::start_cheat_caller_address(shard_dispatcher.contract_address, c::OWNER());
     
-    let counter = test_dispatcher.get_counter();
+    let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
     shard_dispatcher.update_state(snos_output.span());
 
-    let counter = test_dispatcher.get_counter();
+    let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 9999999999999999979477, "Counter is not set");
     println!("counter: {:?}", counter);
 
-    let unchanged_slot = test_dispatcher.read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
+    let unchanged_slot = test_contract_dispatcher.read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     let events = test_spy.get_events();

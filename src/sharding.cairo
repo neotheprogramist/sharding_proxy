@@ -36,11 +36,6 @@ pub mod sharding {
     use super::ISharding;
     use super::StorageSlotWithContract;
 
-    // use sharding_tests::test_contract::ITestContract;
-    // use sharding_tests::test_contract::ITestContractDispatcher;
-    // use sharding_tests::test_contract::ITestContractDispatcherTrait;
-
-    // use sharding_tests::contract_component::IContractComponent;
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 

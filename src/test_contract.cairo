@@ -34,6 +34,7 @@ pub mod test_contract {
     use sharding_tests::sharding::IShardingDispatcher;
     use sharding_tests::sharding::IShardingDispatcherTrait;
     use starknet::syscalls::storage_write_syscall;
+    use sharding_tests::contract_component::contract_component;
 
     // #[cfg(feature: 'slot_test')]
     use starknet::syscalls::storage_read_syscall;
@@ -50,6 +51,12 @@ pub mod test_contract {
     component!(
         path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
     );
+    component!(path: contract_component, storage: contract_component, event: ContractComponentEvent);
+
+    #[abi(embed_v0)]
+    impl ContractComponentImpl = contract_component::ContractComponentImpl<ContractState>;
+
+    impl ContractComponentInternalImpl = contract_component::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -59,6 +66,8 @@ pub mod test_contract {
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
         reentrancy_guard: ReentrancyGuardComponent::Storage,
+        #[substorage(v0)]
+        contract_component: contract_component::Storage,
     }
 
     #[event]
@@ -72,6 +81,8 @@ pub mod test_contract {
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
+        #[flat]
+        ContractComponentEvent: contract_component::Event,
     }
 
     #[derive(Drop, starknet::Event)]
