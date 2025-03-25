@@ -15,7 +15,7 @@ pub trait ITestContract<TContractState> {
 
     fn get_counter(ref self: TContractState) -> felt252;
 
-    #[cfg(feature: 'slot_test')]
+    // #[cfg(feature: 'slot_test')]
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 }
 
@@ -34,8 +34,10 @@ pub mod test_contract {
     use sharding_tests::sharding::IShardingDispatcher;
     use sharding_tests::sharding::IShardingDispatcherTrait;
     use starknet::syscalls::storage_write_syscall;
-    #[cfg(feature: 'slot_test')]
+
+    // #[cfg(feature: 'slot_test')]
     use starknet::syscalls::storage_read_syscall;
+
     use starknet::{
         get_caller_address,
         storage::{
@@ -155,7 +157,7 @@ pub mod test_contract {
             ]
         }
 
-        #[cfg(feature: 'slot_test')]
+        // #[cfg(feature: 'slot_test')]
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
