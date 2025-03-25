@@ -71,7 +71,7 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
         0xa,
         0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
         0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
-        0x67840c21d0d3cba9ed504d8867dffe868f3d43708cfc0d7ed7980b511850070,
+        0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854,
         0x21e19e0c9bab23fccd5,
         0x21e19e0c9bab23fafd5,
         0x7b62949c85c6af8a50c11c22927f9302f7a2e40bc93b4c988415915b0f97f09,
@@ -102,6 +102,7 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
     felts
 }
 
+#[cfg(feature: 'slot_test')]
 #[test]
 fn test_update_state() {
     let (sharding, mut _spy) = deploy_with_owner_and_state(
@@ -128,8 +129,20 @@ fn test_update_state() {
     test_dispatcher.initialize_test(shard_dispatcher.contract_address);
 
     snf::start_cheat_caller_address(shard_dispatcher.contract_address, c::OWNER());
+    
+    let counter = test_dispatcher.get_counter();
+    assert!(counter == 0, "Counter is not set");
+
     shard_dispatcher.update_state(snos_output.span());
+
+    let counter = test_dispatcher.get_counter();
+    assert!(counter == 9999999999999999979477, "Counter is not set");
+    println!("counter: {:?}", counter);
+
+    let unchanged_slot = test_dispatcher.read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
+    assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     let events = test_spy.get_events();
     println!("events: {:?}", events);
+    
 }

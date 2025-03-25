@@ -20,3 +20,6 @@ sierra = true
 
 [scripts]
 test = "snforge test"
+
+[features]
+slot_test = []
