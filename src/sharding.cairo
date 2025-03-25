@@ -151,7 +151,7 @@ pub mod sharding {
                 let contract_dispatcher = IContractComponentDispatcher {
                     contract_address: contract_address,
                 };
-                
+
                 contract_dispatcher.update_shard(slots_to_change.span());
 
                 // After updating, unlock the slots for this contract
@@ -167,6 +167,5 @@ pub mod sharding {
                 }
             }
         }
-
     }
 }

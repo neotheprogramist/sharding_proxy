@@ -10,4 +10,6 @@ pub use state::state_cpt;
 pub use sharding::ISharding;
 pub use sharding::IShardingDispatcher;
 pub use sharding::IShardingDispatcherTrait;
-pub use contract_component::{IContractComponent, IContractComponentDispatcher, IContractComponentDispatcherTrait};
+pub use contract_component::{
+    IContractComponent, IContractComponentDispatcher, IContractComponentDispatcherTrait,
+};

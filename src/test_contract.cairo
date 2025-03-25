@@ -7,9 +7,7 @@ pub trait ITestContract<TContractState> {
 
     fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 
-    fn get_storage_slots(
-        ref self: TContractState,
-    ) -> Array<StorageSlotWithContract>;
+    fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
 
     fn increment(ref self: TContractState);
 
@@ -40,10 +38,7 @@ pub mod test_contract {
     use starknet::syscalls::storage_read_syscall;
 
     use starknet::{
-        get_caller_address,
-        storage::{
-            StoragePointerReadAccess, StoragePointerWriteAccess
-        },
+        get_caller_address, storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
         event::EventEmitter,
     };
 
@@ -51,10 +46,13 @@ pub mod test_contract {
     component!(
         path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
     );
-    component!(path: contract_component, storage: contract_component, event: ContractComponentEvent);
+    component!(
+        path: contract_component, storage: contract_component, event: ContractComponentEvent,
+    );
 
     #[abi(embed_v0)]
-    impl ContractComponentImpl = contract_component::ContractComponentImpl<ContractState>;
+    impl ContractComponentImpl =
+        contract_component::ContractComponentImpl<ContractState>;
 
     impl ContractComponentInternalImpl = contract_component::InternalImpl<ContractState>;
 
@@ -124,8 +122,7 @@ pub mod test_contract {
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
-            sharding_dispatcher
-                .initialize_shard(self.get_storage_slots().span());
+            sharding_dispatcher.initialize_shard(self.get_storage_slots().span());
         }
 
         fn update(ref self: ContractState, storage_changes: Span<(felt252, felt252)>) {
@@ -142,9 +139,8 @@ pub mod test_contract {
         }
 
         fn increment(ref self: ContractState) {
-             
             self.counter.write(self.counter.read() + 1);
-            
+
             let caller = get_caller_address();
             self.emit(Increment { caller });
 
@@ -157,13 +153,10 @@ pub mod test_contract {
             self.counter.read()
         }
 
-        fn get_storage_slots(
-            ref self: ContractState
-        ) -> Array<StorageSlotWithContract> {
+        fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: get_contract_address().into(),
-                    slot: selector!("counter"),
+                    contract_address: get_contract_address().into(), slot: selector!("counter"),
                 },
             ]
         }

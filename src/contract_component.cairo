@@ -14,7 +14,7 @@ pub mod contract_component {
     use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
     use sharding_tests::sharding::StorageSlotWithContract;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    
+
     #[storage]
     pub struct Storage {
         contract_address: ContractAddress,
@@ -46,70 +46,72 @@ pub mod contract_component {
 
     #[embeddable_as(ContractComponentImpl)]
     impl ContractImpl<
-        TContractState, +HasComponent<TContractState>
+        TContractState, +HasComponent<TContractState>,
     > of super::IContractComponent<ComponentState<TContractState>> {
         fn initialize_shard(
-            ref self: ComponentState<TContractState>, 
-            sharding_contract_address: ContractAddress
+            ref self: ComponentState<TContractState>, sharding_contract_address: ContractAddress,
         ) {
             self.sharding_contract_address.write(sharding_contract_address);
-            
+
             let current_contract_address = get_contract_address();
             self.contract_address.write(current_contract_address);
-            
+
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
-            
+
             sharding_dispatcher.initialize_shard(self.get_storage_slots().span());
-            
+
             let caller = get_caller_address();
-            
-            self.emit(ContractComponentInitialized { 
-                contract_address: current_contract_address,
-                sharding_contract_address,
-                initializer: caller 
-            });
+
+            self
+                .emit(
+                    ContractComponentInitialized {
+                        contract_address: current_contract_address,
+                        sharding_contract_address,
+                        initializer: caller,
+                    },
+                );
         }
 
         fn update_shard(
-            ref self: ComponentState<TContractState>,
-            storage_changes: Span<(felt252, felt252)>
+            ref self: ComponentState<TContractState>, storage_changes: Span<(felt252, felt252)>,
         ) {
             let sharding_address = self.sharding_contract_address.read();
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
-            
+
             let mut i: usize = 0;
             while i < storage_changes.len() {
                 let (key, value) = *storage_changes.at(i);
-                
+
                 let storage_address = key.try_into().unwrap();
-                
+
                 storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                
+
                 i += 1;
             };
-            
+
             self.emit(ContractComponentUpdated { storage_changes });
         }
     }
 
     #[generate_trait]
     pub impl InternalImpl<
-        TContractState, +HasComponent<TContractState>
+        TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn assert_initialized(self: @ComponentState<TContractState>) {
             let sharding_address = self.sharding_contract_address.read();
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
         }
-        
-        fn get_storage_slots(self: @ComponentState<TContractState>) -> Array<StorageSlotWithContract> {
+
+        fn get_storage_slots(
+            self: @ComponentState<TContractState>,
+        ) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: self.contract_address.read(),
-                    slot: selector!("counter"),
+                    contract_address: self.contract_address.read(), slot: selector!("counter"),
                 },
             ]
         }
