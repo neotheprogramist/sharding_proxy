@@ -145,6 +145,9 @@ fn test_update_state() {
         .read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
+    let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
+    assert!(shard_id == 1, "Shard id is not set");
+
     let events = test_spy.get_events();
     println!("events: {:?}", events);
 

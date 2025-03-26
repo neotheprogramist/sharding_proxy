@@ -11,12 +11,9 @@ pub trait ISharding<TContractState> {
     fn initialize_shard(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
     fn update_state(ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252);
-}
 
-// #[starknet::interface]
-// pub trait IState<TContractState> {
-//     fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
-// }
+    fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
+}
 
 #[starknet::contract]
 pub mod sharding {
@@ -217,6 +214,12 @@ pub mod sharding {
                     }
                 }
             }
+        }
+
+        fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
+            let shard_id = self.shard_id.read(contract_address);
+            assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            shard_id
         }
     }
 }
