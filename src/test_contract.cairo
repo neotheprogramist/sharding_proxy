@@ -158,7 +158,7 @@ pub mod test_contract {
         fn get_counter(ref self: ContractState) -> felt252 {
             let counter = self.counter.read();
             println!("counter: {:?}", counter);
-            self.emit( Counter { counter } );
+            self.emit(Counter { counter });
             counter
         }
 

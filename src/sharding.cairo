@@ -123,8 +123,8 @@ pub mod sharding {
             let caller = get_caller_address();
             self.initializer_contract_address.write(caller);
             println!("caller: {:?}", caller);
-            
-            self.emit(ContractInitialized { initializer: caller});
+
+            self.emit(ContractInitialized { initializer: caller });
         }
 
         fn update_state(ref self: ContractState, snos_output: Span<felt252>) {
