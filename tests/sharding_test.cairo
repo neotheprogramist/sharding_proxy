@@ -135,7 +135,7 @@ fn test_update_state() {
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
-    shard_dispatcher.update_state(snos_output.span());
+    shard_dispatcher.update_state(snos_output.span(), 1);
 
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not set");
