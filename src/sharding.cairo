@@ -53,8 +53,8 @@ pub mod sharding {
     struct Storage {
         initialized_storage: Map<StorageSlotWithContract, bool>,
         initializer_contract_address: ContractAddress,
-        shard_id:  Map<ContractAddress, shard_id>,
-        shard_id_for_slot:  Map<StorageSlotWithContract, shard_id>,
+        shard_id: Map<ContractAddress, shard_id>,
+        shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
         owner: ContractAddress,
         shard_root: felt252,
         shard_hash: felt252,
@@ -123,7 +123,9 @@ pub mod sharding {
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
-            println!("Initializing shard for caller: {:?}, new shard_id: {:?}", caller, new_shard_id);
+            println!(
+                "Initializing shard for caller: {:?}, new shard_id: {:?}", caller, new_shard_id,
+            );
 
             for i in 0..storage_slots.len() {
                 let storage_slot = *storage_slots.at(i);
@@ -172,9 +174,13 @@ pub mod sharding {
 
                         let slot_shard_id = self.shard_id_for_slot.read(slot);
 
-                        println!("Checking slot: {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}", 
-                        slot, slot_shard_id, shard_id);
-                        
+                        println!(
+                            "Checking slot: {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}",
+                            slot,
+                            slot_shard_id,
+                            shard_id,
+                        );
+
                         // assert(slot_shard_id == shard_id, Errors::SLOT_SHARD_ID_MISMATCH);
                         if slot_shard_id == shard_id {
                             if self.initialized_storage.read(slot) {
@@ -203,7 +209,7 @@ pub mod sharding {
 
                         let is_initialized = self.initialized_storage.read(slot);
                         let slot_shard_id = self.shard_id_for_slot.read(slot);
-                        
+
                         if is_initialized && slot_shard_id == shard_id {
                             println!("Unlocking slot: {:?}", slot);
                             self.initialized_storage.write(slot, false);

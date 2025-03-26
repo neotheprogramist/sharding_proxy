@@ -114,11 +114,13 @@ pub mod contract_component {
                     contract_address: self.contract_address.read(), slot: selector!("counter"),
                 },
                 StorageSlotWithContract {
-                    contract_address: self.contract_address.read(), slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
+                    contract_address: self.contract_address.read(),
+                    slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
                 },
                 // StorageSlotWithContract {
-                //     contract_address: self.contract_address.read(), slot: 3488041066649332616440110253331181934927363442882040970594983370166361489161,
-                // },
+            //     contract_address: self.contract_address.read(), slot:
+            //     3488041066649332616440110253331181934927363442882040970594983370166361489161,
+            // },
             ]
         }
     }
