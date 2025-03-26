@@ -15,7 +15,8 @@
 # accounts-file = "~/.starknet_accounts/starknet_open_zeppelin_accounts.json"
 # url = "http://localhost:5050/"
 
+
 [sncast.default]
-account = "account-2"
-accounts-file = "/home/michal/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+account = "account-4"
+accounts-file = "~/.starknet_accounts/starknet_open_zeppelin_accounts.json"
 url = "http://localhost:5050/"

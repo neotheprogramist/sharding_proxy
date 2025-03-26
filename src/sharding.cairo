@@ -13,10 +13,10 @@ pub trait ISharding<TContractState> {
     fn update_state(ref self: TContractState, snos_output: Span<felt252>);
 }
 
-#[starknet::interface]
-pub trait IState<TContractState> {
-    fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
-}
+// #[starknet::interface]
+// pub trait IState<TContractState> {
+//     fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
+// }
 
 #[starknet::contract]
 pub mod sharding {
@@ -26,7 +26,6 @@ pub mod sharding {
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
     use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
-
     use starknet::{
         get_caller_address, ContractAddress,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
@@ -35,7 +34,7 @@ pub mod sharding {
     use sharding_tests::state::{state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
     use super::ISharding;
     use super::StorageSlotWithContract;
-
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 
@@ -51,6 +50,7 @@ pub mod sharding {
     #[storage]
     struct Storage {
         initialized_storage: Map<StorageSlotWithContract, bool>,
+        initializer_contract_address: ContractAddress,
         owner: ContractAddress,
         shard_root: felt252,
         shard_hash: felt252,
@@ -121,10 +121,14 @@ pub mod sharding {
 
             // Emit initialization event
             let caller = get_caller_address();
-            self.emit(ContractInitialized { initializer: caller });
+            self.initializer_contract_address.write(caller);
+            println!("caller: {:?}", caller);
+            
+            self.emit(ContractInitialized { initializer: caller});
         }
 
         fn update_state(ref self: ContractState, snos_output: Span<felt252>) {
+            println!("snos_output: {:?}", snos_output);
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
 
@@ -133,37 +137,41 @@ pub mod sharding {
                     .try_into()
                     .expect('Invalid contract address');
 
-                let mut slots_to_change = ArrayTrait::new();
+                if self.initializer_contract_address.read() == contract_address {
+                    println!("contract_address: {:?}", contract_address);
 
-                for storage_change in contract.storage_changes.span() {
-                    let (storage_key, storage_value) = *storage_change;
+                    let mut slots_to_change = ArrayTrait::new();
 
-                    // Create a StorageSlot to check if it's locked
-                    let slot = StorageSlotWithContract {
-                        contract_address: contract_address, slot: storage_key,
+                    for storage_change in contract.storage_changes.span() {
+                        let (storage_key, storage_value) = *storage_change;
+
+                        // Create a StorageSlot to check if it's locked
+                        let slot = StorageSlotWithContract {
+                            contract_address: contract_address, slot: storage_key,
+                        };
+                        if self.initialized_storage.read(slot) {
+                            slots_to_change.append((storage_key, storage_value));
+                        }
                     };
-                    if self.initialized_storage.read(slot) {
-                        slots_to_change.append((storage_key, storage_value));
+
+                    // Call update on the specific contract
+                    let contract_dispatcher = IContractComponentDispatcher {
+                        contract_address: contract_address,
+                    };
+
+                    contract_dispatcher.update_shard(slots_to_change.span());
+
+                    // After updating, unlock the slots for this contract
+                    for storage_change in contract.storage_changes.span() {
+                        let (storage_key, _storage_value) = *storage_change;
+
+                        // Create a StorageSlot to unlock
+                        let slot = StorageSlotWithContract {
+                            contract_address: contract_address, slot: storage_key,
+                        };
+
+                        self.initialized_storage.write(slot, false);
                     }
-                };
-
-                // Call update on the specific contract
-                let contract_dispatcher = IContractComponentDispatcher {
-                    contract_address: contract_address,
-                };
-
-                contract_dispatcher.update_shard(slots_to_change.span());
-
-                // After updating, unlock the slots for this contract
-                for storage_change in contract.storage_changes.span() {
-                    let (storage_key, _storage_value) = *storage_change;
-
-                    // Create a StorageSlot to unlock
-                    let slot = StorageSlotWithContract {
-                        contract_address: contract_address, slot: storage_key,
-                    };
-
-                    self.initialized_storage.write(slot, false);
                 }
             }
         }

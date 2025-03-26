@@ -26,7 +26,6 @@ fn deploy_with_owner_and_state(
     let calldata = array![owner, state_root, block_number, block_hash];
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
-    println!("contract_address: 0x{:x}", contract_address);
     let mut spy = snf::spy_events();
 
     (IShardingDispatcher { contract_address }, spy)
@@ -42,7 +41,6 @@ fn deploy_with_owner(
     let calldata = array![owner];
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
-    println!("contract_address: 0x{:x}", contract_address);
     let mut spy = snf::spy_events();
 
     (
@@ -54,65 +52,51 @@ fn deploy_with_owner(
     )
 }
 
-
 fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
     let felts = array![
         1,
         2,
         'snos_hash',
-        0x793ca6f0a9c316340d5e8a9afc324a493f2bf03420992d85c006b92954cf2a9,
-        0x274ab9432ec9e654bd358af1bab72673bb518969356ceea21146077f7c72132,
-        0x1,
-        0x2,
-        0x1f96a23f2636fe713667cbb322bb9503abcd14556fc19042296d00a7f200d05,
-        0x23ce3c50bbd0c7e645230ffcdbd775730434795ea79bf8e7ea5e8dcf3d69da3,
-        0x0,
-        0x438be9915def8bc153122d026cc6ae4430d30ebe1dbfb72c7b303278449c06f,
-        0x0,
-        0x1,
-        0x0,
-        0x0,
+        0xb7414b09eb0af8f04d0f961a25ae369887b267eeab419dcfa071d5c062949f,
+        0x743e5ff21a9905d2e50de3ab08d019d5db4da699a7d4018ae211d5b0a3c5641,
         0x4,
+        0x5,
+        0x44019d2d59b8aae6df9092b324f3e00577308a9f3ed6fe85abaa7206a9f5dcf,
+        0x5b3ad1cfa3b46a7bcc5b14e6ea3e7295788190dc31468cae86a25f50b3406f9,
+        0x0,
+        0x5b13f57af91266140394eaca3080289e3e8881564e71d52f04030c5a35e4d7b,
+        0x0,
+        0x1,
+        0x0,
+        0x0,
+        0x3,
         test_contract_address,
-        0x8000000000000000c02,
+        0x18000000000000002402,
         0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2,
         0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2,
         test_contract_address,
         0xa,
         0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
         0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
-        0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854,
-        0x21e19e0c9bab23fccd5,
-        0x21e19e0c9bab23fafd5,
+        0x67840c21d0d3cba9ed504d8867dffe868f3d43708cfc0d7ed7980b511850070,
+        0x21e19e0c9bab23f4979,
+        0x21e19e0c9bab23f1fc1,
         0x7b62949c85c6af8a50c11c22927f9302f7a2e40bc93b4c988415915b0f97f09,
-        0x332b,
-        0x502b,
+        0xb687,
+        0xe03f,
         test_contract_address,
-        0x2,
-        0x7b3e05f48f0c69e4a65ce5e076a66271a527aff2c34ce1083ec6e1526997a69,
-        0x7b3e05f48f0c69e4a65ce5e076a66271a527aff2c34ce1083ec6e1526997a69,
-        test_contract_address,
-        0x13,
+        0x6,
+        0x1702ecc0c929e0651e55c1558c9005bf7f80f82a24c8f3abffb165f03de2289,
+        0x1702ecc0c929e0651e55c1558c9005bf7f80f82a24c8f3abffb165f03de2289,
+        0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854,
         0x0,
-        0x4810002cdfed6c4fd50781f083f7d43f70b378d6acf4f5b33c3cac2857a0b5d,
-        0xa3e35b50432cd1669313bd75e434458dd8bc8d21437d2aa29d6c256f7b13d1,
-        0x0,
-        0x1,
-        0x27f5e07830ee1ad079cf8c8462d2edc585bda982dbded162e761eb7fd71d84a,
-        0x0,
-        0x1,
-        0x2bd557f4ba80dfabefabe45e9b2dd35db1b9a78e96c72bc2b69b655ce47a930,
-        0x0,
-        0x1,
-        0x3fd94528f836b27f28ba8d7c354705dfc5827b048ca48870ac47c9d5b9aa181,
-        0x0,
-        0x1,
+        0x5,
         0x0,
     ];
     felts
 }
 
-#[cfg(feature: 'slot_test')]
+// #[cfg(feature: 'slot_test')]
 #[test]
 fn test_update_state() {
     let (sharding, mut _spy) = deploy_with_owner_and_state(
@@ -154,7 +138,7 @@ fn test_update_state() {
     shard_dispatcher.update_state(snos_output.span());
 
     let counter = test_contract_dispatcher.get_counter();
-    assert!(counter == 9999999999999999979477, "Counter is not set");
+    assert!(counter == 5, "Counter is not set");
     println!("counter: {:?}", counter);
 
     let unchanged_slot = test_contract_dispatcher
@@ -163,4 +147,6 @@ fn test_update_state() {
 
     let events = test_spy.get_events();
     println!("events: {:?}", events);
+
+    println!("counter: {:?}", selector!("counter"));
 }

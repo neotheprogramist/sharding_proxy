@@ -75,6 +75,7 @@ pub mod test_contract {
         Increment: Increment,
         GameFinished: GameFinished,
         TestContractUpdated: TestContractUpdated,
+        Counter: Counter,
         #[flat]
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
@@ -101,6 +102,11 @@ pub mod test_contract {
     #[derive(Drop, starknet::Event)]
     pub struct GameFinished {
         pub caller: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct Counter {
+        pub counter: felt252,
     }
 
     pub mod Errors {
@@ -150,7 +156,10 @@ pub mod test_contract {
         }
 
         fn get_counter(ref self: ContractState) -> felt252 {
-            self.counter.read()
+            let counter = self.counter.read();
+            println!("counter: {:?}", counter);
+            self.emit( Counter { counter } );
+            counter
         }
 
         fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
