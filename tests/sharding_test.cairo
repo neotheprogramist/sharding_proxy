@@ -14,7 +14,8 @@ use sharding_tests::test_contract::ITestContractDispatcher;
 use sharding_tests::test_contract::ITestContractDispatcherTrait;
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
-use sharding_tests::test_contract::test_contract::{Event, GameFinished};
+use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
 
 fn deploy_with_owner_and_state(
     owner: felt252, state_root: felt252, block_number: felt252, block_hash: felt252,
@@ -101,7 +102,7 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
 #[test]
 fn test_update_state() {
     // Deploy the sharding contract with owner, state root, block number, and block hash
-    let (sharding, mut _spy) = deploy_with_owner_and_state(
+    let (sharding, mut sharding_spy) = deploy_with_owner_and_state(
         owner: c::OWNER().into(),
         state_root: 1120029756675208924496185249815549700817638276364867982519015153297469423111,
         block_number: 97999,
@@ -138,12 +139,27 @@ fn test_update_state() {
     );
     test_contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
 
+    let expected_increment = ShardInitialized {
+        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
+    };
+
+    sharding_spy
+        .assert_emitted(
+            @array![
+                (
+                    shard_dispatcher.contract_address,
+                    ShardingEvent::ShardInitialized(expected_increment),
+                ),
+            ],
+        );
+
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
     // Apply the state update to the sharding system with shard ID 1
     shard_dispatcher.update_state(snos_output.span(), 1);
 
+    //Counter is updated by snos_output
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not set");
     println!("counter: {:?}", counter);
@@ -184,7 +200,7 @@ fn test_ending_event() {
             @array![
                 (
                     test_contract_dispatcher.contract_address,
-                    Event::GameFinished(expected_increment),
+                    TestContractEvent::GameFinished(expected_increment),
                 ),
             ],
         );

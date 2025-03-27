@@ -67,7 +67,7 @@ pub mod sharding {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         ShardingStateUpdate: ShardingStateUpdate,
-        ContractInitialized: ContractInitialized,
+        ShardInitialized: ShardInitialized,
         #[flat]
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
@@ -85,7 +85,7 @@ pub mod sharding {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct ContractInitialized {
+    pub struct ShardInitialized {
         pub initializer: ContractAddress,
         pub shard_id: felt252,
     }
@@ -139,7 +139,7 @@ pub mod sharding {
             // Emit initialization event
             self.initializer_contract_address.write(caller);
 
-            self.emit(ContractInitialized { initializer: caller, shard_id: new_shard_id });
+            self.emit(ShardInitialized { initializer: caller, shard_id: new_shard_id });
         }
 
         fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
