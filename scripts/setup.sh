@@ -80,5 +80,5 @@ deploy_contract "sharding_class_hash.txt" "sharding_contract_address.txt" "0x1 0
 declare_contract "test_contract" "test_contract_class_hash.txt"
 deploy_contract "test_contract_class_hash.txt" "test_contract_address.txt" "$(cat sharding_contract_address.txt)"
 
-# Invoke initialize_test on test contract
-invoke_function "test_contract_address.txt" "initialize_test" "$(cat sharding_contract_address.txt)" 
+# Invoke initialize_shard on test contract
+invoke_function "test_contract_address.txt" "initialize_shard" "$(cat sharding_contract_address.txt)" 

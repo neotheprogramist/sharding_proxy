@@ -5,7 +5,7 @@ use core::iter::IntoIterator;
 use core::poseidon::PoseidonImpl;
 use openzeppelin_testing::constants as c;
 use snforge_std as snf;
-use snforge_std::{ContractClassTrait, EventSpy};
+use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
 
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
@@ -14,6 +14,7 @@ use sharding_tests::test_contract::ITestContractDispatcher;
 use sharding_tests::test_contract::ITestContractDispatcherTrait;
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
+use sharding_tests::test_contract::test_contract::{Event, GameFinished};
 
 fn deploy_with_owner_and_state(
     owner: felt252, state_root: felt252, block_number: felt252, block_hash: felt252,
@@ -99,6 +100,7 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
 // #[cfg(feature: 'slot_test')]
 #[test]
 fn test_update_state() {
+    // Deploy the sharding contract with owner, state root, block number, and block hash
     let (sharding, mut _spy) = deploy_with_owner_and_state(
         owner: c::OWNER().into(),
         state_root: 1120029756675208924496185249815549700817638276364867982519015153297469423111,
@@ -106,17 +108,21 @@ fn test_update_state() {
         block_hash: 0,
     );
 
-    let ((test_contract_dispatcher, contract_component_dispatcher), mut test_spy) =
+    // Deploy the test contract with owner
+    let ((test_contract, test_contract_component), mut test_spy) =
         deploy_with_owner(
         owner: c::OWNER().into(),
     );
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+
+    //Created first dispatcher for test contract interface
     let test_contract_dispatcher = ITestContractDispatcher {
-        contract_address: test_contract_dispatcher.contract_address,
+        contract_address: test_contract.contract_address,
     };
-    let contract_component_dispatcher = IContractComponentDispatcher {
-        contract_address: contract_component_dispatcher.contract_address,
+    //Created second dispatcher for component interface
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract_component.contract_address,
     };
 
     let mut felts = get_state_update(test_contract_dispatcher.contract_address.into())
@@ -127,29 +133,61 @@ fn test_update_state() {
 
     let snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
 
-    snf::start_cheat_caller_address(contract_component_dispatcher.contract_address, c::OWNER());
-    contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
-
-    snf::start_cheat_caller_address(shard_dispatcher.contract_address, c::OWNER());
+    // Initialize the shard by connecting the test contract to the sharding system
+    snf::start_cheat_caller_address(test_contract_component_dispatcher.contract_address, c::OWNER());
+    test_contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
 
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
+    // Apply the state update to the sharding system with shard ID 1
     shard_dispatcher.update_state(snos_output.span(), 1);
 
     let counter = test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not set");
     println!("counter: {:?}", counter);
 
+    // Verify that an unchanged storage slot remains at its default value
     let unchanged_slot = test_contract_dispatcher
         .read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
+
+    //TODO! we need to talk about silent consent to not update unsent slots
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 1, "Shard id is not set");
 
     let events = test_spy.get_events();
     println!("events: {:?}", events);
+    
+}
 
-    println!("counter: {:?}", selector!("counter"));
+#[test]
+fn test_ending_event() {
+    let ((test_contract, _), mut test_spy) =
+        deploy_with_owner(
+        owner: c::OWNER().into(),
+    );
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+    
+    let expected_increment = GameFinished { 
+        caller: c::OWNER() 
+    };
+    
+    test_spy.assert_emitted(
+        @array![
+            (test_contract_dispatcher.contract_address, Event::GameFinished(expected_increment)),
+        ],
+    );
+
 }

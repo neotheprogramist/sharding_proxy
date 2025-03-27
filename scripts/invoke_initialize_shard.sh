@@ -1,7 +1,7 @@
 #!/bin/bash
 
 sncast invoke \
-    --contract-address 0x033c9817a4f4f7941451295fbcd5f34c589115af8716991f21a6afab5b3e3b57 \
+    --contract-address 0x0236a27fd108c4f8fade7bf7e7a387f7ddacec644db581302e34bbd69fbb2bee \
     --function "initialize_shard" \
     --fee-token eth \
-    --calldata 0x05f7da8840974c34f420dc9284a5b91c42a40f0010a21817f0ff75fc9316fdbf
+    --calldata 0x01efc19b1642c5d951b8a70d867f8101b18d9ec4b2e35ec8714c2c15f9287e2c

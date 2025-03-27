@@ -142,7 +142,7 @@ pub mod sharding {
             self.emit(ContractInitialized { initializer: caller, shard_id: new_shard_id });
         }
 
-        fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: shard_id) {
+        fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
             println!("snos_output: {:?}", snos_output);
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
