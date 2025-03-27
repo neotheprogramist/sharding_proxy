@@ -28,21 +28,26 @@ pub mod sharding {
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
     use sharding_tests::snos_output::deserialize_os_output;
-    use sharding_tests::state::{state_cpt, state_cpt::InternalTrait, state_cpt::InternalImpl};
+    use sharding_tests::state::{state_cpt, state_cpt::InternalImpl};
     use super::ISharding;
     use super::StorageSlotWithContract;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
+    use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
+
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(
         path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
     );
     component!(path: state_cpt, storage: state, event: StateEvent);
+    component!(path: config_cpt, storage: config, event: ConfigEvent);
 
     #[abi(embed_v0)]
     impl StateImpl = state_cpt::StateImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ConfigImpl = config_cpt::ConfigImpl<ContractState>;
 
     type shard_id = felt252;
 
@@ -61,6 +66,8 @@ pub mod sharding {
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
         reentrancy_guard: ReentrancyGuardComponent::Storage,
+        #[substorage(v0)]
+        config: config_cpt::Storage,
     }
 
     #[event]
@@ -74,6 +81,8 @@ pub mod sharding {
         StateEvent: state_cpt::Event,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
+        #[flat]
+        ConfigEvent: config_cpt::Event,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -101,20 +110,15 @@ pub mod sharding {
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-        state_root: felt252,
-        block_number: felt252,
-        block_hash: felt252,
-    ) {
+    fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.ownable.initializer(owner);
-        self.state.initialize(state_root, block_number, block_hash);
     }
 
     #[abi(embed_v0)]
     impl ShardingImpl of ISharding<ContractState> {
         fn initialize_shard(ref self: ContractState, storage_slots: Span<StorageSlotWithContract>) {
+            self.config.assert_only_owner_or_operator();
+
             let caller = get_caller_address();
             let current_shard_id = self.shard_id.read(caller);
             let new_shard_id = current_shard_id + 1;
@@ -143,6 +147,8 @@ pub mod sharding {
         }
 
         fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
+            self.config.assert_only_owner_or_operator();
+
             println!("snos_output: {:?}", snos_output);
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);

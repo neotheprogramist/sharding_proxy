@@ -3,6 +3,7 @@ pub mod snos_output;
 pub mod state;
 pub mod test_contract;
 pub mod contract_component;
+pub mod config;
 
 pub use state::{IState, IStateDispatcher, IStateDispatcherTrait};
 pub use test_contract::{ITestContract, ITestContractDispatcher, ITestContractDispatcherTrait};
@@ -13,3 +14,6 @@ pub use sharding::IShardingDispatcherTrait;
 pub use contract_component::{
     IContractComponent, IContractComponentDispatcher, IContractComponentDispatcherTrait,
 };
+pub use config::IConfig;
+pub use config::IConfigDispatcher;
+pub use config::IConfigDispatcherTrait;

@@ -16,16 +16,15 @@ use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
 use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::config::IConfigDispatcher;
+use sharding_tests::config::IConfigDispatcherTrait;
 
-fn deploy_with_owner_and_state(
-    owner: felt252, state_root: felt252, block_number: felt252, block_hash: felt252,
-) -> (IShardingDispatcher, EventSpy) {
+fn deploy_sharding_with_owner(owner: felt252) -> (IShardingDispatcher, EventSpy) {
     let contract = match snf::declare("sharding").unwrap() {
         snf::DeclareResult::Success(contract) => contract,
         _ => core::panic_with_felt252('AlreadyDeclared not expected'),
     };
-    let block_number: felt252 = block_number.into();
-    let calldata = array![owner, state_root, block_number, block_hash];
+    let calldata = array![owner];
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
     let mut spy = snf::spy_events();
@@ -33,9 +32,7 @@ fn deploy_with_owner_and_state(
     (IShardingDispatcher { contract_address }, spy)
 }
 
-fn deploy_with_owner(
-    owner: felt252,
-) -> ((IContractComponentDispatcher, ITestContractDispatcher), EventSpy) {
+fn deploy_test_contract_with_owner(owner: felt252) -> (ITestContractDispatcher, EventSpy) {
     let contract = match snf::declare("test_contract").unwrap() {
         snf::DeclareResult::Success(contract) => contract,
         _ => core::panic_with_felt252('AlreadyDeclared not expected'),
@@ -45,13 +42,7 @@ fn deploy_with_owner(
 
     let mut spy = snf::spy_events();
 
-    (
-        (
-            IContractComponentDispatcher { contract_address },
-            ITestContractDispatcher { contract_address },
-        ),
-        spy,
-    )
+    (ITestContractDispatcher { contract_address }, spy)
 }
 
 fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
@@ -101,20 +92,16 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
 // #[cfg(feature: 'slot_test')]
 #[test]
 fn test_update_state() {
-    // Deploy the sharding contract with owner, state root, block number, and block hash
-    let (sharding, mut sharding_spy) = deploy_with_owner_and_state(
-        owner: c::OWNER().into(),
-        state_root: 1120029756675208924496185249815549700817638276364867982519015153297469423111,
-        block_number: 97999,
-        block_hash: 0,
-    );
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding_with_owner(owner: c::OWNER().into());
 
-    // Deploy the test contract with owner
-    let ((test_contract, test_contract_component), mut test_spy) = deploy_with_owner(
-        owner: c::OWNER().into(),
-    );
+    // Deploy the test contract
+    let (test_contract, mut test_spy) = deploy_test_contract_with_owner(owner: c::OWNER().into());
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
 
     //Created first dispatcher for test contract interface
     let test_contract_dispatcher = ITestContractDispatcher {
@@ -122,7 +109,7 @@ fn test_update_state() {
     };
     //Created second dispatcher for component interface
     let test_contract_component_dispatcher = IContractComponentDispatcher {
-        contract_address: test_contract_component.contract_address,
+        contract_address: test_contract.contract_address,
     };
 
     let mut felts = get_state_update(test_contract_dispatcher.contract_address.into())
@@ -132,6 +119,13 @@ fn test_update_state() {
     println!("output: {:?}", output);
 
     let snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
+
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
 
     // Initialize the shard by connecting the test contract to the sharding system
     snf::start_cheat_caller_address(
@@ -157,6 +151,9 @@ fn test_update_state() {
     assert!(counter == 0, "Counter is not set");
 
     // Apply the state update to the sharding system with shard ID 1
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
     shard_dispatcher.update_state(snos_output.span(), 1);
 
     //Counter is updated by snos_output
@@ -180,7 +177,7 @@ fn test_update_state() {
 
 #[test]
 fn test_ending_event() {
-    let ((test_contract, _), mut test_spy) = deploy_with_owner(owner: c::OWNER().into());
+    let (test_contract, mut test_spy) = deploy_test_contract_with_owner(owner: c::OWNER().into());
 
     let test_contract_dispatcher = ITestContractDispatcher {
         contract_address: test_contract.contract_address,
@@ -188,9 +185,7 @@ fn test_ending_event() {
 
     snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
     test_contract_dispatcher.increment();
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
     test_contract_dispatcher.increment();
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
     test_contract_dispatcher.increment();
 
     let expected_increment = GameFinished { caller: c::OWNER() };
