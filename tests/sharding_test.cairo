@@ -109,8 +109,7 @@ fn test_update_state() {
     );
 
     // Deploy the test contract with owner
-    let ((test_contract, test_contract_component), mut test_spy) =
-        deploy_with_owner(
+    let ((test_contract, test_contract_component), mut test_spy) = deploy_with_owner(
         owner: c::OWNER().into(),
     );
 
@@ -134,7 +133,9 @@ fn test_update_state() {
     let snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
 
     // Initialize the shard by connecting the test contract to the sharding system
-    snf::start_cheat_caller_address(test_contract_component_dispatcher.contract_address, c::OWNER());
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
     test_contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
 
     let counter = test_contract_dispatcher.get_counter();
@@ -159,35 +160,32 @@ fn test_update_state() {
 
     let events = test_spy.get_events();
     println!("events: {:?}", events);
-    
 }
 
 #[test]
 fn test_ending_event() {
-    let ((test_contract, _), mut test_spy) =
-        deploy_with_owner(
-        owner: c::OWNER().into(),
-    );
+    let ((test_contract, _), mut test_spy) = deploy_with_owner(owner: c::OWNER().into());
 
     let test_contract_dispatcher = ITestContractDispatcher {
         contract_address: test_contract.contract_address,
     };
-    
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
-    test_contract_dispatcher.increment();
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
-    test_contract_dispatcher.increment();
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
-    test_contract_dispatcher.increment();
-    
-    let expected_increment = GameFinished { 
-        caller: c::OWNER() 
-    };
-    
-    test_spy.assert_emitted(
-        @array![
-            (test_contract_dispatcher.contract_address, Event::GameFinished(expected_increment)),
-        ],
-    );
 
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    test_contract_dispatcher.increment();
+
+    let expected_increment = GameFinished { caller: c::OWNER() };
+
+    test_spy
+        .assert_emitted(
+            @array![
+                (
+                    test_contract_dispatcher.contract_address,
+                    Event::GameFinished(expected_increment),
+                ),
+            ],
+        );
 }

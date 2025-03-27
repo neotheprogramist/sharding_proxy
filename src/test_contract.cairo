@@ -104,7 +104,6 @@ pub mod test_contract {
 
     #[abi(embed_v0)]
     impl TestContractImpl of ITestContract<ContractState> {
-
         fn increment(ref self: ContractState) {
             self.counter.write(self.counter.read() + 1);
 
