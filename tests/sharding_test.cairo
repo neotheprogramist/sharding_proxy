@@ -131,7 +131,11 @@ fn test_update_state() {
     snf::start_cheat_caller_address(
         test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
-    test_contract_component_dispatcher.initialize_shard(shard_dispatcher.contract_address);
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
+
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,

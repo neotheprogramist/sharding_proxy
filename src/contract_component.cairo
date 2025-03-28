@@ -1,8 +1,13 @@
 use starknet::{ContractAddress};
+use sharding_tests::sharding::StorageSlotWithContract;
 
 #[starknet::interface]
 pub trait IContractComponent<TContractState> {
-    fn initialize_shard(ref self: TContractState, sharding_contract_address: ContractAddress);
+    fn initialize_shard(
+        ref self: TContractState,
+        sharding_contract_address: ContractAddress,
+        contract_slots_changes: Span<StorageSlotWithContract>,
+    );
     fn update_shard(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
 }
 
@@ -49,7 +54,9 @@ pub mod contract_component {
         TContractState, +HasComponent<TContractState>,
     > of super::IContractComponent<ComponentState<TContractState>> {
         fn initialize_shard(
-            ref self: ComponentState<TContractState>, sharding_contract_address: ContractAddress,
+            ref self: ComponentState<TContractState>,
+            sharding_contract_address: ContractAddress,
+            contract_slots_changes: Span<StorageSlotWithContract>,
         ) {
             self.sharding_contract_address.write(sharding_contract_address);
 
@@ -60,7 +67,7 @@ pub mod contract_component {
                 contract_address: sharding_contract_address,
             };
 
-            sharding_dispatcher.initialize_shard(self.get_storage_slots().span());
+            sharding_dispatcher.initialize_shard(contract_slots_changes);
 
             let caller = get_caller_address();
 
@@ -104,24 +111,6 @@ pub mod contract_component {
             let sharding_address = self.sharding_contract_address.read();
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
-        }
-
-        fn get_storage_slots(
-            self: @ComponentState<TContractState>,
-        ) -> Array<StorageSlotWithContract> {
-            array![
-                StorageSlotWithContract {
-                    contract_address: self.contract_address.read(), slot: selector!("counter"),
-                },
-                StorageSlotWithContract {
-                    contract_address: self.contract_address.read(),
-                    slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
-                },
-                // StorageSlotWithContract {
-            //     contract_address: self.contract_address.read(), slot:
-            //     3488041066649332616440110253331181934927363442882040970594983370166361489161,
-            // },
-            ]
         }
     }
 }

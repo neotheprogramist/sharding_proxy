@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sncast invoke \
     --contract-address "$(cat sharding_contract_address.txt)" \
     --function "register_operator" \

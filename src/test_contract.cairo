@@ -1,3 +1,5 @@
+use sharding_tests::sharding::StorageSlotWithContract;
+
 #[starknet::interface]
 pub trait ITestContract<TContractState> {
     fn increment(ref self: TContractState);
@@ -6,6 +8,8 @@ pub trait ITestContract<TContractState> {
 
     // #[cfg(feature: 'slot_test')]
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
+
+    fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
 }
 
 #[starknet::contract]
@@ -15,11 +19,12 @@ pub mod test_contract {
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
     use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
-    use starknet::ContractAddress;
+    use starknet::{ContractAddress, get_contract_address};
     use sharding_tests::state::{state_cpt::InternalImpl};
     use core::starknet::SyscallResultTrait;
     use super::ITestContract;
     use sharding_tests::contract_component::contract_component;
+    use sharding_tests::sharding::StorageSlotWithContract;
 
     // #[cfg(feature: 'slot_test')]
     use starknet::syscalls::storage_read_syscall;
@@ -123,6 +128,18 @@ pub mod test_contract {
         // #[cfg(feature: 'slot_test')]
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
+        }
+
+        fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
+            array![
+                StorageSlotWithContract {
+                    contract_address: get_contract_address(), slot: selector!("counter"),
+                },
+                StorageSlotWithContract {
+                    contract_address: get_contract_address(),
+                    slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
+                },
+            ]
         }
     }
 }
