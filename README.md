@@ -63,45 +63,19 @@ Next you need to deploy the contracts to the network with the scripts below to s
 
 ### Setup and Deployment
 
-#### Declare the sharding contract ####
-```bash
-./scripts/declare_sharding.sh
-```
-
 #### Deploy the sharding contract ####
 Deploy the sharding contract, you need to change the class hash to the declared one.
-Constructor calldata is 4 felt252 values:
-- owner
-- state_root
-- block_number
-- block_hash
-
-```bash
-./scripts/deploy_sharding.sh
-```
-
-#### Declare the test contract ####
-```bash
-./scripts/declare_test_contract.sh
-```
-
-#### Deploy the test contract ####
-Deploy a test contract, you need to change the class hash to the declared one.
-Constructor calldata is 1 felt252 value:
+Constructor calldata is one felt252 value:
 - owner
 
+#### To setup the test contract with the sharding system ####
 ```bash
-./scripts/deploy_test_contract.sh
+./scripts/setup.sh
 ```
 
 #### Initialize the test contract with the sharding system ####
 ```bash
 ./scripts/invoke_initialize_shard.sh
-```
-
-#### Doing all the steps above in one go with default values ####
-```bash
-./scripts/setup.sh
 ```
 
 ### Updating State

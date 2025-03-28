@@ -74,7 +74,7 @@ invoke_function() {
 
 # Declare and deploy shard contract
 declare_contract "sharding" "sharding_class_hash.txt"
-deploy_contract "sharding_class_hash.txt" "sharding_contract_address.txt" "0x1f401c745d3dba9b9da11921d1fb006c96f571e9039a0ece3f3b0dc14f04c3d"
+deploy_contract "sharding_class_hash.txt" "sharding_contract_address.txt" "0x1f401c745d3dba9b9da11921d1fb006c96f571e9039a0ece3f3b0dc14f04c3d" #katana pre-deployed account address
 
 # Declare and deploy test contract
 declare_contract "test_contract" "test_contract_class_hash.txt"

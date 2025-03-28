@@ -122,18 +122,13 @@ pub mod sharding {
         fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
             self.config.assert_only_owner_or_operator();
 
-            println!("snos_output: {:?}", snos_output);
-
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
-            println!("deserialized os output : {:?}", program_output_struct);
 
             for contract in program_output_struct.state_diff.contracts.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
                     .expect('Invalid contract address');
-
-                println!("contract_address: {:?}", contract_address);
 
                 if self.initializer_contract_address.read() == contract_address {
                     let contract_shard_id = self.shard_id.read(contract_address);

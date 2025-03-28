@@ -58,6 +58,7 @@ pub mod config_cpt {
             get_dep_component!(@self, Ownable).assert_only_owner();
             assert(!self.operators.read(address), errors::ALREADY_REGISTERED);
             self.operators.write(address, true);
+            self.emit(Event::OperatorRegistered(OperatorRegistered { operator: address }));
         }
 
         fn unregister_operator(ref self: ComponentState<TContractState>, address: ContractAddress) {
