@@ -21,3 +21,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: asdf-vm/actions/install@v3.0.2
       - run: scarb test --all-features 
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: asdf-vm/actions/install@v3.0.2
+      - run: scarb build 
