@@ -158,11 +158,11 @@ pub mod sharding {
                     .try_into()
                     .expect('Invalid contract address');
 
-                let contract_shard_id = self.shard_id.read(contract_address);
-                assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-                assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
-
                 if self.initializer_contract_address.read() == contract_address {
+                    
+                    let contract_shard_id = self.shard_id.read(contract_address);
+                    assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+                    assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
                     println!("Processing contract: {:?}", contract_address);
 
                     let mut slots_to_change = ArrayTrait::new();
