@@ -124,9 +124,10 @@ pub mod test_contract {
                     contract_address: get_contract_address(), slot: selector!("counter"),
                 },
                 // StorageSlotWithContract {
-                //     contract_address: get_contract_address(),
-                //     slot: 2926345684328354409014039193448755836334301647171549754784433265613851656304,
-                // },
+            //     contract_address: get_contract_address(),
+            //     slot:
+            //     2926345684328354409014039193448755836334301647171549754784433265613851656304,
+            // },
             ]
         }
     }

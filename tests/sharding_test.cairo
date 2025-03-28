@@ -178,7 +178,7 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-    .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
