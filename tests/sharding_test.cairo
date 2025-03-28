@@ -10,14 +10,17 @@ use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
 use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
-use sharding_tests::test_contract::ITestContractDispatcher;
-use sharding_tests::test_contract::ITestContractDispatcherTrait;
+
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
-use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
+
 use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
 use sharding_tests::config::IConfigDispatcher;
 use sharding_tests::config::IConfigDispatcherTrait;
+
+use sharding_tests::test_contract::ITestContractDispatcher;
+use sharding_tests::test_contract::ITestContractDispatcherTrait;
+use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
 
 fn deploy_sharding_with_owner(owner: felt252) -> (IShardingDispatcher, EventSpy) {
     let contract = match snf::declare("sharding").unwrap() {
@@ -89,7 +92,6 @@ fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
     felts
 }
 
-// #[cfg(feature: 'slot_test')]
 #[test]
 fn test_update_state() {
     // Deploy the sharding contract

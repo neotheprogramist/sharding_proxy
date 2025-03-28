@@ -22,13 +22,11 @@ pub mod sharding {
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
-    use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
     use starknet::{
         get_caller_address, ContractAddress,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
     use sharding_tests::snos_output::deserialize_os_output;
-    use sharding_tests::state::{state_cpt, state_cpt::InternalImpl};
     use super::ISharding;
     use super::StorageSlotWithContract;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
@@ -38,14 +36,8 @@ pub mod sharding {
 
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
-    component!(
-        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
-    );
-    component!(path: state_cpt, storage: state, event: StateEvent);
     component!(path: config_cpt, storage: config, event: ConfigEvent);
 
-    #[abi(embed_v0)]
-    impl StateImpl = state_cpt::StateImpl<ContractState>;
     #[abi(embed_v0)]
     impl ConfigImpl = config_cpt::ConfigImpl<ContractState>;
 
@@ -58,14 +50,8 @@ pub mod sharding {
         shard_id: Map<ContractAddress, shard_id>,
         shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
         owner: ContractAddress,
-        shard_root: felt252,
-        shard_hash: felt252,
-        #[substorage(v0)]
-        state: state_cpt::Storage,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
-        #[substorage(v0)]
-        reentrancy_guard: ReentrancyGuardComponent::Storage,
         #[substorage(v0)]
         config: config_cpt::Storage,
     }
@@ -73,24 +59,11 @@ pub mod sharding {
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        ShardingStateUpdate: ShardingStateUpdate,
         ShardInitialized: ShardInitialized,
-        #[flat]
-        ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
-        #[flat]
-        StateEvent: state_cpt::Event,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
         ConfigEvent: config_cpt::Event,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    pub struct ShardingStateUpdate {
-        pub shard_root: felt252,
-        pub shard_number: felt252,
-        pub shard_hash: felt252,
-        pub shard_data: felt252,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -149,7 +122,6 @@ pub mod sharding {
         fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
             self.config.assert_only_owner_or_operator();
 
-            println!("snos_output: {:?}", snos_output);
             let mut _snos_output_iter = snos_output.into_iter();
             let program_output_struct = deserialize_os_output(ref _snos_output_iter);
 
