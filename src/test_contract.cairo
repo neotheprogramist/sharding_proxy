@@ -1,20 +1,14 @@
-use starknet::{ContractAddress};
 use sharding_tests::sharding::StorageSlotWithContract;
 
 #[starknet::interface]
 pub trait ITestContract<TContractState> {
-    fn initialize_test(ref self: TContractState, sharding_contract_address: ContractAddress);
-
-    fn update(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
-
-    fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
-
     fn increment(ref self: TContractState);
 
     fn get_counter(ref self: TContractState) -> felt252;
 
-    // #[cfg(feature: 'slot_test')]
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
+
+    fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
 }
 
 #[starknet::contract]
@@ -23,18 +17,12 @@ pub mod test_contract {
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
-    use openzeppelin::security::reentrancyguard::{ReentrancyGuardComponent};
-    use starknet::{get_contract_address, ContractAddress};
-    use sharding_tests::state::{state_cpt::InternalImpl};
+    use starknet::{ContractAddress, get_contract_address};
     use core::starknet::SyscallResultTrait;
     use super::ITestContract;
-    use sharding_tests::sharding::StorageSlotWithContract;
-    use sharding_tests::sharding::IShardingDispatcher;
-    use sharding_tests::sharding::IShardingDispatcherTrait;
-    use starknet::syscalls::storage_write_syscall;
     use sharding_tests::contract_component::contract_component;
+    use sharding_tests::sharding::StorageSlotWithContract;
 
-    // #[cfg(feature: 'slot_test')]
     use starknet::syscalls::storage_read_syscall;
 
     use starknet::{
@@ -43,9 +31,6 @@ pub mod test_contract {
     };
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
-    component!(
-        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
-    );
     component!(
         path: contract_component, storage: contract_component, event: ContractComponentEvent,
     );
@@ -63,8 +48,6 @@ pub mod test_contract {
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
-        reentrancy_guard: ReentrancyGuardComponent::Storage,
-        #[substorage(v0)]
         contract_component: contract_component::Storage,
     }
 
@@ -75,8 +58,6 @@ pub mod test_contract {
         Increment: Increment,
         GameFinished: GameFinished,
         TestContractUpdated: TestContractUpdated,
-        #[flat]
-        ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
@@ -117,27 +98,6 @@ pub mod test_contract {
 
     #[abi(embed_v0)]
     impl TestContractImpl of ITestContract<ContractState> {
-        fn initialize_test(ref self: ContractState, sharding_contract_address: ContractAddress) {
-            // Emit initialization event
-            let sharding_dispatcher = IShardingDispatcher {
-                contract_address: sharding_contract_address,
-            };
-            sharding_dispatcher.initialize_shard(self.get_storage_slots().span());
-        }
-
-        fn update(ref self: ContractState, storage_changes: Span<(felt252, felt252)>) {
-            let mut i: usize = 0;
-            while i < storage_changes.len() {
-                let (key, value) = *storage_changes.at(i);
-
-                storage_write_syscall(0, key.try_into().unwrap(), value).unwrap_syscall();
-
-                i += 1;
-            };
-
-            self.emit(TestContractUpdated { storage_changes });
-        }
-
         fn increment(ref self: ContractState) {
             self.counter.write(self.counter.read() + 1);
 
@@ -150,20 +110,20 @@ pub mod test_contract {
         }
 
         fn get_counter(ref self: ContractState) -> felt252 {
-            self.counter.read()
+            let counter = self.counter.read();
+            counter
+        }
+
+        fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
+            storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
 
         fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: get_contract_address().into(), slot: selector!("counter"),
+                    contract_address: get_contract_address(), slot: selector!("counter"),
                 },
             ]
-        }
-
-        // #[cfg(feature: 'slot_test')]
-        fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
-            storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
     }
 }

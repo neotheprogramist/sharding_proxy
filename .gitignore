@@ -1,4 +1,6 @@
 target
 .snfoundry_cache/
-proof_output
-proof.json
+sharding_contract_address.txt
+test_contract_address.txt
+snfoundry.toml
+snos_output.txt

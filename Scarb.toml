@@ -26,4 +26,4 @@ sierra = true
 test = "snforge test"
 
 [features]
-slot_test = []
+test_contract = []

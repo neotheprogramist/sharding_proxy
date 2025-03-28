@@ -74,11 +74,17 @@ invoke_function() {
 
 # Declare and deploy shard contract
 declare_contract "sharding" "sharding_class_hash.txt"
-deploy_contract "sharding_class_hash.txt" "sharding_contract_address.txt" "0x1 0x1 0x1 0x1"
+deploy_contract "sharding_class_hash.txt" "sharding_contract_address.txt" "0x1f401c745d3dba9b9da11921d1fb006c96f571e9039a0ece3f3b0dc14f04c3d" #katana pre-deployed account address
 
 # Declare and deploy test contract
 declare_contract "test_contract" "test_contract_class_hash.txt"
 deploy_contract "test_contract_class_hash.txt" "test_contract_address.txt" "$(cat sharding_contract_address.txt)"
 
-# Invoke initialize_test on test contract
-invoke_function "test_contract_address.txt" "initialize_test" "$(cat sharding_contract_address.txt)" 
+rm sharding_class_hash.txt
+rm test_contract_class_hash.txt
+
+sncast invoke \
+    --contract-address "$(cat sharding_contract_address.txt)" \
+    --function "register_operator" \
+    --fee-token eth \
+    --calldata "$(cat test_contract_address.txt)"
