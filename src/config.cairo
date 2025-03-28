@@ -1,6 +1,6 @@
 //! SPDX-License-Identifier: MIT
 //!
-//! Interface for appchain settlement contract configuration.
+//! Interface for sharding contract configuration.
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -34,7 +34,6 @@ pub mod config_cpt {
 
     #[storage]
     pub struct Storage {
-        /// Appchain operators that are allowed to update the state.
         pub operators: Map<ContractAddress, bool>,
     }
 
