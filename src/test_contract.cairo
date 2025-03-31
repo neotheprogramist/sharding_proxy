@@ -127,7 +127,9 @@ pub mod test_contract {
         fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: get_contract_address(), slot: selector!("counter"), crd_type: CRDType::Lock,
+                    contract_address: get_contract_address(),
+                    slot: selector!("counter"),
+                    crd_type: CRDType::Lock,
                 },
             ]
         }

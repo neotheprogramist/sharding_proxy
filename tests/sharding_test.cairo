@@ -138,12 +138,12 @@ fn test_update_state() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span()
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardingInitialized {
-        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1, storage_slots: contract_slots_changes.span()
+        initializer: test_contract_component_dispatcher.contract_address,
+        shard_id: 1,
+        storage_slots: contract_slots_changes.span(),
     };
 
     sharding_spy
@@ -181,9 +181,7 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span()
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
@@ -256,12 +254,12 @@ fn test_update_state_with_add_operation() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span()
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardingInitialized {
-        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1, storage_slots: contract_slots_changes.span()
+        initializer: test_contract_component_dispatcher.contract_address,
+        shard_id: 1,
+        storage_slots: contract_slots_changes.span(),
     };
 
     sharding_spy

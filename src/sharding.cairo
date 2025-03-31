@@ -24,9 +24,7 @@ pub struct CRDTStorageSlot {
 
 #[starknet::interface]
 pub trait ISharding<TContractState> {
-    fn initialize_sharding(
-        ref self: TContractState, storage_slots: Span<StorageSlotWithContract>,
-    );
+    fn initialize_sharding(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
     fn update_contract_state(
         ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252, crd_type: CRDType,
@@ -114,8 +112,7 @@ pub mod sharding {
     #[abi(embed_v0)]
     impl ShardingImpl of ISharding<ContractState> {
         fn initialize_sharding(
-            ref self: ContractState,
-            storage_slots: Span<StorageSlotWithContract>,
+            ref self: ContractState, storage_slots: Span<StorageSlotWithContract>,
         ) {
             self.config.assert_only_owner_or_operator();
 
@@ -124,7 +121,12 @@ pub mod sharding {
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
-            self.emit(ShardingInitialized { initializer: caller, shard_id: new_shard_id, storage_slots: storage_slots});
+            self
+                .emit(
+                    ShardingInitialized {
+                        initializer: caller, shard_id: new_shard_id, storage_slots: storage_slots,
+                    },
+                );
         }
 
         fn update_contract_state(
@@ -161,11 +163,12 @@ pub mod sharding {
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {
                         let (storage_key, storage_value) = *storage_change;
-                        storage_changes.append(CRDTStorageSlot {
-                            key: storage_key,
-                            value: storage_value,
-                            crd_type,
-                        });
+                        storage_changes
+                            .append(
+                                CRDTStorageSlot {
+                                    key: storage_key, value: storage_value, crd_type,
+                                },
+                            );
                     };
 
                     contract_dispatcher.update_state(storage_changes, shard_id);
