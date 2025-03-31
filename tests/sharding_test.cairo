@@ -6,15 +6,16 @@ use core::poseidon::PoseidonImpl;
 use openzeppelin_testing::constants as c;
 use snforge_std as snf;
 use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
+use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
 
+use sharding_tests::sharding::CRDType;
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
 
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
 use sharding_tests::config::IConfigDispatcher;
 use sharding_tests::config::IConfigDispatcherTrait;
 
@@ -137,7 +138,7 @@ fn test_update_state() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock);
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -160,7 +161,7 @@ fn test_update_state() {
     snf::start_cheat_caller_address(
         shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
     );
-    shard_dispatcher.update_state(snos_output.span(), 1);
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Lock);
 
     //Counter is updated by snos_output
     let counter = test_contract_dispatcher.get_counter();
@@ -178,7 +179,7 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock);
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
