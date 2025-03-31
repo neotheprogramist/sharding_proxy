@@ -75,7 +75,7 @@ pub mod contract_component {
                 contract_address: sharding_contract_address,
             };
 
-            sharding_dispatcher.initialize_shard(contract_slots_changes, crd_type);
+            sharding_dispatcher.initialize_shard(contract_slots_changes);
 
             let caller = get_caller_address();
 

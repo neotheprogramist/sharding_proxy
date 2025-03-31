@@ -135,7 +135,7 @@ fn test_update_state() {
         test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-    let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
 
     test_contract_component_dispatcher
         .initialize_shard(
@@ -253,7 +253,7 @@ fn test_update_state_with_add_operation() {
         test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-    let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
 
     test_contract_component_dispatcher
         .initialize_shard(
@@ -293,3 +293,4 @@ fn test_update_state_with_add_operation() {
     assert!(counter == 15, "Counter was not incremented correctly");
     println!("Counter after Add operation: {:?}", counter);
 }
+

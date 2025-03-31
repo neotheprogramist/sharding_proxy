@@ -4,11 +4,13 @@ use starknet::{ContractAddress};
 pub struct StorageSlotWithContract {
     pub contract_address: ContractAddress,
     pub slot: felt252,
+    pub crd_type: CRDType,
 }
 
-#[derive(Drop, Serde, Hash, Copy, Debug, PartialEq)]
+#[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
     Add,
+    #[default]
     Lock,
     Set,
 }
@@ -23,7 +25,7 @@ pub struct CRDTStorageSlot {
 #[starknet::interface]
 pub trait ISharding<TContractState> {
     fn initialize_shard(
-        ref self: TContractState, storage_slots: Span<StorageSlotWithContract>, crd_type: CRDType,
+        ref self: TContractState, storage_slots: Span<StorageSlotWithContract>,
     );
 
     fn update_state(
@@ -113,7 +115,6 @@ pub mod sharding {
         fn initialize_shard(
             ref self: ContractState,
             storage_slots: Span<StorageSlotWithContract>,
-            crd_type: CRDType,
         ) {
             self.config.assert_only_owner_or_operator();
 
@@ -126,56 +127,52 @@ pub mod sharding {
                 "Initializing shard for caller: {:?}, new shard_id: {:?}", caller, new_shard_id,
             );
 
-            match crd_type {
-                CRDType::Lock => {
-                    println!("Locking storage slots");
-                    for i in 0..storage_slots.len() {
-                        let storage_slot = *storage_slots.at(i);
-                        let is_locked = self.locked_slots.read(storage_slot);
-                        let is_add = self.add_slots.read(storage_slot);
-                        let is_set = self.set_slots.read(storage_slot);
+            for i in 0..storage_slots.len() {
+                let storage_slot = *storage_slots.at(i);
+                let crd_type = storage_slots.at(i).crd_type;
 
-                        assert(!is_locked && !is_add && !is_set, Errors::ALREADY_INITIALIZED);
+                match crd_type {
+                    CRDType::Lock => {
+                        println!("Locking storage slots");
+                            let is_locked = self.locked_slots.read(storage_slot);
+                            let is_add = self.add_slots.read(storage_slot);
+                            let is_set = self.set_slots.read(storage_slot);
 
-                        // Lock this storage key
-                        self.locked_slots.write(storage_slot, true);
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!(
-                            "Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
-                        );
-                    };
-                },
-                CRDType::Add => {
-                    println!("Adding storage slots");
-                    for i in 0..storage_slots.len() {
-                        let storage_slot = *storage_slots.at(i);
-                        let is_locked = self.locked_slots.read(storage_slot);
-                        let is_set = self.set_slots.read(storage_slot);
+                            assert(!is_locked && !is_add && !is_set, Errors::ALREADY_INITIALIZED);
 
-                        assert(!is_locked && !is_set, Errors::ALREADY_INITIALIZED);
+                            // Lock this storage key
+                            self.locked_slots.write(storage_slot, true);
+                            self.shard_id_for_slot.write(storage_slot, new_shard_id);
+                            println!(
+                                "Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
+                            );
+                    },
+                    CRDType::Add => {
+                        println!("Adding storage slots");
+                            let is_locked = self.locked_slots.read(storage_slot);
+                            let is_set = self.set_slots.read(storage_slot);
 
-                        self.add_slots.write(storage_slot, true);
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!(
-                            "Added slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
-                        );
-                    }
-                },
-                CRDType::Set => {
-                    println!("Setting storage slots");
-                    for i in 0..storage_slots.len() {
-                        let storage_slot = *storage_slots.at(i);
-                        let is_locked = self.locked_slots.read(storage_slot);
-                        let is_add = self.add_slots.read(storage_slot);
+                            assert(!is_locked && !is_set, Errors::ALREADY_INITIALIZED);
 
-                        assert(!is_locked && !is_add, Errors::ALREADY_INITIALIZED);
+                            self.add_slots.write(storage_slot, true);
+                            self.shard_id_for_slot.write(storage_slot, new_shard_id);
+                            println!(
+                                "Added slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
+                            );
+                    },
+                    CRDType::Set => {
+                        println!("Setting storage slots");
+                            let is_locked = self.locked_slots.read(storage_slot);
+                            let is_add = self.add_slots.read(storage_slot);
 
-                        self.set_slots.write(storage_slot, true);
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!("Set slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
-                    }
-                },
-            }
+                            assert(!is_locked && !is_add, Errors::ALREADY_INITIALIZED);
+
+                            self.set_slots.write(storage_slot, true);
+                            self.shard_id_for_slot.write(storage_slot, new_shard_id);
+                            println!("Set slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
+                    },
+                }
+            };
             // Emit initialization event
             self.initializer_contract_address.write(caller);
 
@@ -218,7 +215,7 @@ pub mod sharding {
 
                                 // Create a StorageSlot to check if it's locked
                                 let slot = StorageSlotWithContract {
-                                    contract_address: contract_address, slot: storage_key,
+                                    contract_address: contract_address, slot: storage_key, crd_type: CRDType::Lock,
                                 };
 
                                 let slot_shard_id = self.shard_id_for_slot.read(slot);
@@ -255,7 +252,7 @@ pub mod sharding {
 
                                 // Create a StorageSlot to check if it's marked as Add
                                 let slot = StorageSlotWithContract {
-                                    contract_address: contract_address, slot: storage_key,
+                                    contract_address: contract_address, slot: storage_key, crd_type: CRDType::Add,
                                 };
 
                                 let slot_shard_id = self.shard_id_for_slot.read(slot);
@@ -292,7 +289,7 @@ pub mod sharding {
 
                                 // Create a StorageSlot to check if it's marked as Set
                                 let slot = StorageSlotWithContract {
-                                    contract_address: contract_address, slot: storage_key,
+                                    contract_address: contract_address, slot: storage_key, crd_type: CRDType::Set,
                                 };
 
                                 let slot_shard_id = self.shard_id_for_slot.read(slot);
@@ -345,7 +342,7 @@ pub mod sharding {
 
                                 // Create a StorageSlot to unlock
                                 let slot = StorageSlotWithContract {
-                                    contract_address: contract_address, slot: storage_key,
+                                    contract_address: contract_address, slot: storage_key, crd_type: CRDType::Lock,
                                 };
 
                                 let is_locked = self.locked_slots.read(slot);
@@ -364,7 +361,7 @@ pub mod sharding {
 
                                 // Create a StorageSlot to unlock
                                 let slot = StorageSlotWithContract {
-                                    contract_address: contract_address, slot: storage_key,
+                                    contract_address: contract_address, slot: storage_key, crd_type,
                                 };
 
                                 let slot_shard_id = self.shard_id_for_slot.read(slot);
