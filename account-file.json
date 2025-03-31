@@ -1,0 +1,13 @@
+{
+    "sharding": {
+        "mainuser": {
+            "address": "0x1f401c745d3dba9b9da11921d1fb006c96f571e9039a0ece3f3b0dc14f04c3d",
+            "class_hash": "0x07dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2",
+            "deployed": true,
+            "legacy": false,
+            "private_key": "0x7230b49615d175307d580c33d6fda61fc7b9aec91df0f5c1a5ebe3b8cbfee02",
+            "public_key": "0x78e6e3e4a50285be0f6e8d0b8a61044033e24023df6eb95979ae4073f159ae6",
+            "type": "argent"
+        }
+    }
+}
