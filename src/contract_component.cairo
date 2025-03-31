@@ -90,7 +90,7 @@ pub mod contract_component {
         }
 
         fn update_shard(
-            ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>
+            ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>,
         ) {
             let sharding_address = self.sharding_contract_address.read();
             let zero_address: ContractAddress = 0.try_into().unwrap();
@@ -114,10 +114,17 @@ pub mod contract_component {
                         println!("Set operation: key={}, value={}", key, value);
                     },
                     CRDType::Add => {
-                        let current_value = storage_read_syscall(0, storage_address).unwrap_syscall();
+                        let current_value = storage_read_syscall(0, storage_address)
+                            .unwrap_syscall();
                         let new_value = current_value + value;
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
-                        println!("Add operation: key={}, current_value={}, added_value={}, new_value={}", key, current_value, value, new_value);
+                        println!(
+                            "Add operation: key={}, current_value={}, added_value={}, new_value={}",
+                            key,
+                            current_value,
+                            value,
+                            new_value,
+                        );
                     },
                 }
 

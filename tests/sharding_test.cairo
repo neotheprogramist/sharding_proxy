@@ -138,7 +138,9 @@ fn test_update_state() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock);
+        .initialize_shard(
+            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
+        );
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -179,7 +181,9 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock);
+        .initialize_shard(
+            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
+        );
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
