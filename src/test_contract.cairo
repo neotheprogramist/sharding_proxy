@@ -24,7 +24,7 @@ pub mod test_contract {
     use super::ITestContract;
     use sharding_tests::contract_component::contract_component;
     use sharding_tests::sharding::StorageSlotWithContract;
-
+    use sharding_tests::sharding::CRDType;
     use starknet::syscalls::storage_read_syscall;
 
     use starknet::{
@@ -127,7 +127,7 @@ pub mod test_contract {
         fn get_storage_slots(ref self: ContractState) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: get_contract_address(), slot: selector!("counter"),
+                    contract_address: get_contract_address(), slot: selector!("counter"), crd_type: CRDType::Lock,
                 },
             ]
         }

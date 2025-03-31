@@ -4,11 +4,13 @@ use starknet::{ContractAddress};
 pub struct StorageSlotWithContract {
     pub contract_address: ContractAddress,
     pub slot: felt252,
+    pub crd_type: CRDType,
 }
 
-#[derive(Drop, Serde, Hash, Copy, Debug, PartialEq)]
+#[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
     Add,
+    #[default]
     Lock,
     Set,
 }
@@ -23,7 +25,7 @@ pub struct CRDTStorageSlot {
 #[starknet::interface]
 pub trait ISharding<TContractState> {
     fn initialize_sharding(
-        ref self: TContractState, storage_slots: Span<StorageSlotWithContract>, crd_type: CRDType,
+        ref self: TContractState, storage_slots: Span<StorageSlotWithContract>,
     );
 
     fn update_contract_state(
@@ -48,7 +50,7 @@ pub mod sharding {
     use super::ISharding;
     use super::StorageSlotWithContract;
     use super::CRDType;
-    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::storage::StoragePointerReadAccess;
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
     use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
@@ -91,6 +93,7 @@ pub mod sharding {
     pub struct ShardingInitialized {
         pub initializer: ContractAddress,
         pub shard_id: felt252,
+        pub storage_slots: Span<StorageSlotWithContract>,
     }
 
     pub mod Errors {
@@ -113,7 +116,6 @@ pub mod sharding {
         fn initialize_sharding(
             ref self: ContractState,
             storage_slots: Span<StorageSlotWithContract>,
-            crd_type: CRDType,
         ) {
             self.config.assert_only_owner_or_operator();
 
@@ -122,7 +124,7 @@ pub mod sharding {
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
-            self.emit(ShardingInitialized { initializer: caller, shard_id: new_shard_id, crd_type_slots: Span<CRDTStorageSlot> });
+            self.emit(ShardingInitialized { initializer: caller, shard_id: new_shard_id, storage_slots: storage_slots});
         }
 
         fn update_contract_state(

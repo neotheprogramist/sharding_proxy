@@ -11,7 +11,7 @@ use sharding_tests::snos_output::{StarknetOsOutput, deserialize_os_output};
 use sharding_tests::sharding::CRDType;
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardingInitialized};
 
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
@@ -139,11 +139,11 @@ fn test_update_state() {
 
     test_contract_component_dispatcher
         .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
+            shard_dispatcher.contract_address, contract_slots_changes.span()
         );
 
-    let expected_increment = ShardInitialized {
-        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
+    let expected_increment = ShardingInitialized {
+        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1, storage_slots: contract_slots_changes.span()
     };
 
     sharding_spy
@@ -151,7 +151,7 @@ fn test_update_state() {
             @array![
                 (
                     shard_dispatcher.contract_address,
-                    ShardingEvent::ShardInitialized(expected_increment),
+                    ShardingEvent::ShardingInitialized(expected_increment),
                 ),
             ],
         );
@@ -163,7 +163,7 @@ fn test_update_state() {
     snf::start_cheat_caller_address(
         shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
     );
-    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Lock);
+    shard_dispatcher.update_contract_state(snos_output.span(), 1, CRDType::Lock);
 
     //Counter is updated by snos_output
     let counter = test_contract_dispatcher.get_counter();
@@ -182,7 +182,7 @@ fn test_update_state() {
 
     test_contract_component_dispatcher
         .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
+            shard_dispatcher.contract_address, contract_slots_changes.span()
         );
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
@@ -257,11 +257,11 @@ fn test_update_state_with_add_operation() {
 
     test_contract_component_dispatcher
         .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Add,
+            shard_dispatcher.contract_address, contract_slots_changes.span()
         );
 
-    let expected_increment = ShardInitialized {
-        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
+    let expected_increment = ShardingInitialized {
+        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1, storage_slots: contract_slots_changes.span()
     };
 
     sharding_spy
@@ -269,7 +269,7 @@ fn test_update_state_with_add_operation() {
             @array![
                 (
                     shard_dispatcher.contract_address,
-                    ShardingEvent::ShardInitialized(expected_increment),
+                    ShardingEvent::ShardingInitialized(expected_increment),
                 ),
             ],
         );
@@ -286,7 +286,7 @@ fn test_update_state_with_add_operation() {
     snf::start_cheat_caller_address(
         shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
     );
-    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Add);
+    shard_dispatcher.update_contract_state(snos_output.span(), 1, CRDType::Add);
 
     // Verify that the counter was incremented by 5 (from SNOS output) to become 15
     let counter = test_contract_dispatcher.get_counter();
