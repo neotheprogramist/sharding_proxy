@@ -217,3 +217,79 @@ fn test_ending_event() {
             ],
         );
 }
+
+#[test]
+fn test_update_state_with_add_operation() {
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    //Created first dispatcher for test contract interface
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    //Created second dispatcher for component interface
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Add operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots();
+
+    test_contract_component_dispatcher
+        .initialize_shard(
+            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Add,
+        );
+
+    let expected_increment = ShardInitialized {
+        initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
+    };
+
+    sharding_spy
+        .assert_emitted(
+            @array![
+                (
+                    shard_dispatcher.contract_address,
+                    ShardingEvent::ShardInitialized(expected_increment),
+                ),
+            ],
+        );
+
+    // Set initial counter value
+    test_contract_dispatcher.set_counter(10);
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 10, "Counter is not set to initial value");
+
+    // Create SNOS output with Add operation
+    let mut snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
+
+    // Apply the state update with Add operation
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Add);
+
+    // Verify that the counter was incremented by 5 (from SNOS output) to become 15
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 15, "Counter was not incremented correctly");
+    println!("Counter after Add operation: {:?}", counter);
+}

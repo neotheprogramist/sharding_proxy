@@ -6,6 +6,8 @@ pub trait ITestContract<TContractState> {
 
     fn get_counter(ref self: TContractState) -> felt252;
 
+    fn set_counter(ref self: TContractState, value: felt252);
+
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
     fn get_storage_slots(ref self: TContractState) -> Array<StorageSlotWithContract>;
@@ -112,6 +114,10 @@ pub mod test_contract {
         fn get_counter(ref self: ContractState) -> felt252 {
             let counter = self.counter.read();
             counter
+        }
+
+        fn set_counter(ref self: ContractState, value: felt252) {
+            self.counter.write(value);
         }
 
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
