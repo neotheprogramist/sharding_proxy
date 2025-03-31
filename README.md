@@ -17,16 +17,19 @@ By using this approach, contracts can start shard by initializing proxy and sett
 ### Core Components
 
 1. **Sharding Proxy Contract** (`src/sharding.cairo`)
+
    - Central contract that manages shards and processes state updates
    - Maintains a registry of storage slots and their associated shards
    - Routes storage updates to the appropriate contracts
 
 2. **Contract Component** (`src/contract_component.cairo`)
+
    - Embeddable component for making contracts "sharding-capable"
    - Handles registration with the sharding system
    - Processes storage updates from the sharding contract
 
 3. **Test Contract** (`src/test_contract.cairo`)
+
    - Example implementation using the sharding system
    - Simple example with counter that is incremented
    - Emits end-event when shard is finished
@@ -38,11 +41,13 @@ By using this approach, contracts can start shard by initializing proxy and sett
 ## How It Works
 
 1. **Initialization**
+
    - Test contract initializes sharding proxy by calling initialize_shard function with slots to be changed
    - Proxy contract registers specific storage slots and a caller-contract address
    - Each contract is assigned a unique shard ID
 
 2. **State Updates**
+
    - The sharding contract receives state updates from Starknet OS
    - It filters updates based on registered storage slots, shard ID and a caller-contract address
    - Only relevant changes are forwarded to the appropriate contracts
@@ -57,45 +62,66 @@ By using this approach, contracts can start shard by initializing proxy and sett
 
 ### Environment
 
-To test the sharding system, you need to have a local network running. You can download dojo-katana network from [here](https://github.com/dojoengine/dojo.git) and run it with `katana init` command to setup the network. And `katana --chain katana --block-time 5000 --db-dir katana.db` to run the network with name `katana` and block time 5 seconds and database in `katana.db` directory.
+To test the sharding system, you need to have a local network running. You can download dojo-katana network from [here](https://github.com/dojoengine/dojo.git) and run it with `katana init` command to setup the network, set chain id to sharding. And `katana --chain sharding --block-time 5000 --db-dir katana.db` to run the network with name `sharding` and block time 5 seconds and database in `katana.db` directory.
+
+```
+katana init
+> Id sharding
+> Settlement chain Sepolia
+> Account <sepolia account address>
+> Private key <sepolia account private key>
+> Deploy settlement contract? Yes
+✓ Deployment successful (0x7a1444f2fba2175328d5d381b19f163772f70d8912d6d54f2f2a5ae48b334b3) at block #639113
+> Add Slot paymaster account? No
+```
 
 Next you need to deploy the contracts to the network with the scripts below to see how it works.
 
 ### Setup and Deployment
 
-#### Deploy the sharding contract ####
+#### Deploy the sharding contract
+
 Deploy the sharding contract, you need to change the class hash to the declared one.
 Constructor calldata is one felt252 value:
+
 - owner
 
-#### To setup the test contract with the sharding system ####
+#### To setup the test contract with the sharding system
+
 ```bash
 ./scripts/setup.sh
 ```
 
-#### Initialize the test contract with the sharding system ####
+#### Initialize the test contract with the sharding system
+
 ```bash
 ./scripts/invoke_initialize_shard.sh
 ```
 
 ### Updating State
 
-#### Process a state update ####
+#### Process a state update
+
 You need to provide snos_output.txt file with state changes and a sharding contract address.
+
 ```bash
 ./scripts/invoke_update_shard.sh
 ```
 
 ### Interacting with Contracts
 
-#### Increment the counter in the test contract ####
+#### Increment the counter in the test contract
+
 Increment the counter in the test contract, provide the test contract address.
+
 ```bash
 ./scripts/invoke_increment.sh
 ```
 
-#### Read the current counter value ####
+#### Read the current counter value
+
 Read the current counter value, provide the test contract address.
+
 ```bash
 ./scripts/call_get_counter.sh
 ```
@@ -103,6 +129,7 @@ Read the current counter value, provide the test contract address.
 ## Testing
 
 Run the tests to verify the sharding functionality:
+
 ```bash
 scarb test
 ```
@@ -123,6 +150,7 @@ scarb build
 ```
 
 ### Example of snos_output.txt file:
+
 first element 0x2d is length of the output, second, third and fourth elements are bootloader values, then each element is a felt252 value of snos output, last element 0x3 is shard id.
 
 ```
