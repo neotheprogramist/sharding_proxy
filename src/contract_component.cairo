@@ -1,5 +1,7 @@
 use starknet::{ContractAddress};
 use sharding_tests::sharding::StorageSlotWithContract;
+use sharding_tests::sharding::CRDType;
+use sharding_tests::sharding::CRDTStorageSlot;
 
 #[starknet::interface]
 pub trait IContractComponent<TContractState> {
@@ -7,8 +9,9 @@ pub trait IContractComponent<TContractState> {
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<StorageSlotWithContract>,
+        crd_type: CRDType,
     );
-    fn update_shard(ref self: TContractState, storage_changes: Span<(felt252, felt252)>);
+    fn update_shard(ref self: TContractState, storage_changes: Array<CRDTStorageSlot>);
 }
 
 #[starknet::component]
@@ -16,9 +19,13 @@ pub mod contract_component {
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use core::starknet::SyscallResultTrait;
     use starknet::syscalls::storage_write_syscall;
+    use starknet::syscalls::storage_read_syscall;
     use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
     use sharding_tests::sharding::StorageSlotWithContract;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use sharding_tests::sharding::CRDType;
+    use sharding_tests::sharding::CRDTStorageSlot;
+    use starknet::storage_access::StorageAddress;
 
     #[storage]
     pub struct Storage {
@@ -42,7 +49,7 @@ pub mod contract_component {
 
     #[derive(Drop, starknet::Event)]
     pub struct ContractComponentUpdated {
-        pub storage_changes: Span<(felt252, felt252)>,
+        pub storage_changes: Array<CRDTStorageSlot>,
     }
 
     pub mod Errors {
@@ -57,6 +64,7 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>,
             sharding_contract_address: ContractAddress,
             contract_slots_changes: Span<StorageSlotWithContract>,
+            crd_type: CRDType,
         ) {
             self.sharding_contract_address.write(sharding_contract_address);
 
@@ -67,7 +75,7 @@ pub mod contract_component {
                 contract_address: sharding_contract_address,
             };
 
-            sharding_dispatcher.initialize_shard(contract_slots_changes);
+            sharding_dispatcher.initialize_shard(contract_slots_changes, crd_type);
 
             let caller = get_caller_address();
 
@@ -82,7 +90,7 @@ pub mod contract_component {
         }
 
         fn update_shard(
-            ref self: ComponentState<TContractState>, storage_changes: Span<(felt252, felt252)>,
+            ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>
         ) {
             let sharding_address = self.sharding_contract_address.read();
             let zero_address: ContractAddress = 0.try_into().unwrap();
@@ -90,11 +98,28 @@ pub mod contract_component {
 
             let mut i: usize = 0;
             while i < storage_changes.len() {
-                let (key, value) = *storage_changes.at(i);
+                let storage_change = storage_changes.at(i);
+                let (key, value) = (*storage_change.key, *storage_change.value);
+                let crd_type = storage_change.crd_type;
 
-                let storage_address = key.try_into().unwrap();
+                let storage_address: StorageAddress = key.try_into().unwrap();
 
-                storage_write_syscall(0, storage_address, value).unwrap_syscall();
+                match crd_type {
+                    CRDType::Lock => {
+                        storage_write_syscall(0, storage_address, value).unwrap_syscall();
+                        println!("Lock operation: key={}, value={}", key, value);
+                    },
+                    CRDType::Set => {
+                        storage_write_syscall(0, storage_address, value).unwrap_syscall();
+                        println!("Set operation: key={}, value={}", key, value);
+                    },
+                    CRDType::Add => {
+                        let current_value = storage_read_syscall(0, storage_address).unwrap_syscall();
+                        let new_value = current_value + value;
+                        storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
+                        println!("Add operation: key={}, current_value={}, added_value={}, new_value={}", key, current_value, value, new_value);
+                    },
+                }
 
                 i += 1;
             };
