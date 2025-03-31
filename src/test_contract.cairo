@@ -11,7 +11,9 @@ pub trait ITestContract<TContractState> {
 
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
-    fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> Array<StorageSlotWithContract>;
+    fn get_storage_slots(
+        ref self: TContractState, crd_type: CRDType,
+    ) -> Array<StorageSlotWithContract>;
 }
 
 #[starknet::contract]
@@ -125,10 +127,12 @@ pub mod test_contract {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
 
-        fn get_storage_slots(ref self: ContractState, crd_type: CRDType) -> Array<StorageSlotWithContract> {
+        fn get_storage_slots(
+            ref self: ContractState, crd_type: CRDType,
+        ) -> Array<StorageSlotWithContract> {
             array![
                 StorageSlotWithContract {
-                    contract_address: get_contract_address(), slot: selector!("counter"), crd_type
+                    contract_address: get_contract_address(), slot: selector!("counter"), crd_type,
                 },
             ]
         }
