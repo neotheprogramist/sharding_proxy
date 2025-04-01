@@ -1,6 +1,5 @@
 use starknet::{ContractAddress};
 use sharding_tests::sharding::StorageSlotWithContract;
-use sharding_tests::sharding::CRDType;
 use sharding_tests::sharding::CRDTStorageSlot;
 
 #[starknet::interface]
@@ -9,7 +8,6 @@ pub trait IContractComponent<TContractState> {
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<StorageSlotWithContract>,
-        crd_type: CRDType,
     );
     fn update_shard(ref self: TContractState, storage_changes: Array<CRDTStorageSlot>);
 }
@@ -64,7 +62,6 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>,
             sharding_contract_address: ContractAddress,
             contract_slots_changes: Span<StorageSlotWithContract>,
-            crd_type: CRDType,
         ) {
             self.sharding_contract_address.write(sharding_contract_address);
 
@@ -96,11 +93,10 @@ pub mod contract_component {
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
 
-            let mut i: usize = 0;
-            while i < storage_changes.len() {
-                let storage_change = storage_changes.at(i);
-                let (key, value) = (*storage_change.key, *storage_change.value);
-                let crd_type = storage_change.crd_type;
+            for storage_change in storage_changes.span() {
+                let (key, value, crd_type) = (
+                    *storage_change.key, *storage_change.value, *storage_change.crd_type,
+                );
 
                 let storage_address: StorageAddress = key.try_into().unwrap();
 
@@ -127,8 +123,6 @@ pub mod contract_component {
                         );
                     },
                 }
-
-                i += 1;
             };
 
             self.emit(ContractComponentUpdated { storage_changes });

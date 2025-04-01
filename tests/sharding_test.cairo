@@ -138,9 +138,7 @@ fn test_update_state() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -181,9 +179,7 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
@@ -256,9 +252,7 @@ fn test_update_state_with_add_operation() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Add,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -332,9 +326,7 @@ fn test_update_state_with_set_operation() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Set,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -408,9 +400,7 @@ fn test_multiple_crd_operations() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Lock,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     // Set initial counter value to 0
     test_contract_dispatcher.set_counter(0);
@@ -433,9 +423,7 @@ fn test_multiple_crd_operations() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Add,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     // Apply state update with Add operation
     snf::start_cheat_caller_address(
@@ -452,9 +440,7 @@ fn test_multiple_crd_operations() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
 
     test_contract_component_dispatcher
-        .initialize_shard(
-            shard_dispatcher.contract_address, contract_slots_changes.span(), CRDType::Set,
-        );
+        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
 
     // Apply state update with Set operation
     snf::start_cheat_caller_address(
