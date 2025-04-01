@@ -23,13 +23,17 @@ impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: Option<CRDType>, crd_type: CRDType) {
         match crd_type {
             CRDType::Add => {
-                assert(self == Option::None || self == Option::Some(CRDType::Add), 'Sharding already initialized');
+                assert(
+                    self == Option::None || self == Option::Some(CRDType::Add),
+                    'Sharding already initialized',
+                );
             },
-            CRDType::Lock => {
-                assert(self == Option::None, 'Sharding already initialized');
-            },
+            CRDType::Lock => { assert(self == Option::None, 'Sharding already initialized'); },
             CRDType::Set => {
-                assert(self == Option::None || self == Option::Some(CRDType::Set), 'Sharding already initialized');
+                assert(
+                    self == Option::None || self == Option::Some(CRDType::Set),
+                    'Sharding already initialized',
+                );
             },
         }
     }
@@ -164,7 +168,8 @@ pub mod sharding {
                 self
                     .slots
                     .write(
-                        (storage_slot.contract_address, storage_slot.slot), (Option::Some(crd_type), init_count+1),
+                        (storage_slot.contract_address, storage_slot.slot),
+                        (Option::Some(crd_type), init_count + 1),
                     );
                 self.shard_id_for_slot.write(storage_slot, new_shard_id);
                 println!("Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
@@ -184,10 +189,7 @@ pub mod sharding {
             self.config.assert_only_owner_or_operator();
             let mut snos_output = snos_output;
             let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
-            assert(
-                program_output_struct.state_diff.len() != 0,
-                Errors::NO_CONTRACTS_SUBMITTED,
-            );
+            assert(program_output_struct.state_diff.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
@@ -210,7 +212,9 @@ pub mod sharding {
                         };
 
                         let slot_shard_id = self.shard_id_for_slot.read(slot);
-                        let (prev_crd_type, _) = self.slots.read((slot.contract_address, slot.slot));
+                        let (prev_crd_type, _) = self
+                            .slots
+                            .read((slot.contract_address, slot.slot));
 
                         println!(
                             "Checking slot (Lock): {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}, prev_crd_type: {:?}",
@@ -254,15 +258,22 @@ pub mod sharding {
                             crd_type: *slot_to_unlock.crd_type,
                         };
                         println!("Unlocking slot: {:?}", slot);
-                        let (prev_crd_type, init_count) = self.slots.read((slot.contract_address, slot.slot));
+                        let (prev_crd_type, init_count) = self
+                            .slots
+                            .read((slot.contract_address, slot.slot));
                         assert(init_count != 0, Errors::STORAGE_UNLOCKED);
                         if init_count - 1 == 0 {
                             self.slots.write((slot.contract_address, slot.slot), (Option::None, 0));
                         } else {
-                            self.slots.write((slot.contract_address, slot.slot), (prev_crd_type, init_count-1));
+                            self
+                                .slots
+                                .write(
+                                    (slot.contract_address, slot.slot),
+                                    (prev_crd_type, init_count - 1),
+                                );
                         }
                     };
-                    self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change});
+                    self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
                 }
             }
         }
