@@ -129,46 +129,15 @@ pub mod sharding {
                     .read((storage_slot.contract_address, storage_slot.slot));
                 assert(is_initialized == Option::None, Errors::ALREADY_INITIALIZED);
 
-                match crd_type {
-                    CRDType::Lock => {
-                        println!("Locking storage slots");
-                        // Lock this storage key
-                        self
-                            .slots
-                            .write(
-                                (storage_slot.contract_address, storage_slot.slot),
-                                Option::Some(CRDType::Lock),
-                            );
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!(
-                            "Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
-                        );
-                    },
-                    CRDType::Add => {
-                        println!("Adding storage slots");
-                        self
-                            .slots
-                            .write(
-                                (storage_slot.contract_address, storage_slot.slot),
-                                Option::Some(CRDType::Add),
-                            );
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!(
-                            "Added slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id,
-                        );
-                    },
-                    CRDType::Set => {
-                        println!("Setting storage slots");
-                        self
-                            .slots
-                            .write(
-                                (storage_slot.contract_address, storage_slot.slot),
-                                Option::Some(CRDType::Set),
-                            );
-                        self.shard_id_for_slot.write(storage_slot, new_shard_id);
-                        println!("Set slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
-                    },
-                }
+                println!("Locking storage slots");
+                // Lock this storage key
+                self
+                    .slots
+                    .write(
+                        (storage_slot.contract_address, storage_slot.slot), Option::Some(crd_type),
+                    );
+                self.shard_id_for_slot.write(storage_slot, new_shard_id);
+                println!("Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
             };
             // Emit initialization event
             self.initializer_contract_address.write(caller);
