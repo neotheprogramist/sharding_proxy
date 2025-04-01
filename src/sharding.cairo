@@ -17,7 +17,6 @@ pub trait ISharding<TContractState> {
 
 #[starknet::contract]
 pub mod sharding {
-    use core::iter::IntoIterator;
     use core::poseidon::{PoseidonImpl};
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
@@ -26,7 +25,7 @@ pub mod sharding {
         get_caller_address, ContractAddress,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
-    use sharding_tests::snos_output::deserialize_os_output;
+    use sharding_tests::shard_output::ShardOutput;
     use super::ISharding;
     use super::StorageSlotWithContract;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
@@ -121,11 +120,9 @@ pub mod sharding {
 
         fn update_state(ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252) {
             self.config.assert_only_owner_or_operator();
-
-            let mut _snos_output_iter = snos_output.into_iter();
-            let program_output_struct = deserialize_os_output(ref _snos_output_iter);
-
-            for contract in program_output_struct.state_diff.contracts.span() {
+            let mut snos_output = snos_output;
+            let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
+            for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
                     .expect('Invalid contract address');
