@@ -48,10 +48,10 @@ pub mod sharding {
     use super::ISharding;
     use super::StorageSlotWithContract;
     use super::CRDType;
-    use starknet::storage::StoragePointerReadAccess;
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
     use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
+    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use super::CRDTStorageSlot;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
@@ -102,6 +102,7 @@ pub mod sharding {
         pub const SHARD_ID_MISMATCH: felt252 = 'Sharding: Shard id mismatch';
         pub const SHARD_ID_NOT_SET: felt252 = 'Sharding: Shard id not set';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Sharding: No contracts';
+        pub const NO_STORAGE_CHANGES: felt252 = 'Sharding: No storage changes';
     }
 
     #[constructor]
@@ -120,6 +121,7 @@ pub mod sharding {
             let current_shard_id = self.shard_id.read(caller);
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
+            self.initializer_contract_address.write(caller);
 
             self
                 .emit(
@@ -156,10 +158,6 @@ pub mod sharding {
                     assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
                     println!("Processing contract: {:?}", contract_address);
 
-                    let contract_dispatcher = IContractComponentDispatcher {
-                        contract_address: contract_address,
-                    };
-
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {
                         let (storage_key, storage_value) = *storage_change;
@@ -170,7 +168,11 @@ pub mod sharding {
                                 },
                             );
                     };
+                    assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
 
+                    let contract_dispatcher = IContractComponentDispatcher {
+                        contract_address: contract_address,
+                    };
                     contract_dispatcher.update_state(storage_changes, shard_id);
                 }
             }
