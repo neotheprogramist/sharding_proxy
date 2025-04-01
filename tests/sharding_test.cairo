@@ -1,7 +1,6 @@
 use snforge_std::EventSpyTrait;
 use core::traits::Into;
 use core::result::ResultTrait;
-use core::iter::IntoIterator;
 use core::poseidon::PoseidonImpl;
 use openzeppelin_testing::constants as c;
 use snforge_std as snf;
@@ -22,6 +21,10 @@ use sharding_tests::config::IConfigDispatcherTrait;
 use sharding_tests::test_contract::ITestContractDispatcher;
 use sharding_tests::test_contract::ITestContractDispatcherTrait;
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
+use sharding_tests::shard_output::{ShardOutput, ContractChanges};
+
+const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
+const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
 
 fn deploy_sharding_with_owner(owner: felt252) -> (IShardingDispatcher, EventSpy) {
     let contract = match snf::declare("sharding").unwrap() {
@@ -49,48 +52,30 @@ fn deploy_test_contract_with_owner(owner: felt252) -> (ITestContractDispatcher, 
     (ITestContractDispatcher { contract_address }, spy)
 }
 
-fn get_state_update(test_contract_address: felt252) -> Array<felt252> {
-    let felts = array![
-        1,
-        2,
-        'snos_hash',
-        0xb7414b09eb0af8f04d0f961a25ae369887b267eeab419dcfa071d5c062949f,
-        0x743e5ff21a9905d2e50de3ab08d019d5db4da699a7d4018ae211d5b0a3c5641,
-        0x4,
-        0x5,
-        0x44019d2d59b8aae6df9092b324f3e00577308a9f3ed6fe85abaa7206a9f5dcf,
-        0x5b3ad1cfa3b46a7bcc5b14e6ea3e7295788190dc31468cae86a25f50b3406f9,
-        0x0,
-        0x5b13f57af91266140394eaca3080289e3e8881564e71d52f04030c5a35e4d7b,
-        0x0,
-        0x1,
-        0x0,
-        0x0,
-        0x3,
-        test_contract_address,
-        0x18000000000000002402,
-        0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2,
-        0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2,
-        test_contract_address,
-        0xa,
-        0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
-        0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac,
-        0x67840c21d0d3cba9ed504d8867dffe868f3d43708cfc0d7ed7980b511850070,
-        0x21e19e0c9bab23f4979,
-        0x21e19e0c9bab23f1fc1,
-        0x7b62949c85c6af8a50c11c22927f9302f7a2e40bc93b4c988415915b0f97f09,
-        0xb687,
-        0xe03f,
-        test_contract_address,
-        0x6,
-        0x1702ecc0c929e0651e55c1558c9005bf7f80f82a24c8f3abffb165f03de2289,
-        0x1702ecc0c929e0651e55c1558c9005bf7f80f82a24c8f3abffb165f03de2289,
-        0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854,
-        0x0,
-        0x5,
-        0x0,
-    ];
-    felts
+fn get_state_update(
+    test_contract_address: felt252, storage_slot: felt252, storage_value: felt252,
+) -> Array<felt252> {
+    let mut shard_output = ShardOutput {
+        state_diff: array![
+            ContractChanges {
+                addr: test_contract_address,
+                nonce: 0,
+                class_hash: Option::None,
+                storage_changes: array![(storage_slot, storage_value)],
+            },
+            // Not locked slot, should not be updated, so we add it this dummy value to the state
+            // diff to verify that it is not updated
+            ContractChanges {
+                addr: test_contract_address,
+                nonce: 0,
+                class_hash: Option::None,
+                storage_changes: array![(NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE)],
+            },
+        ],
+    };
+    let mut snos_output = array![];
+    shard_output.serialize(ref snos_output);
+    snos_output
 }
 
 #[test]
@@ -114,20 +99,19 @@ fn test_update_state() {
     let test_contract_component_dispatcher = IContractComponentDispatcher {
         contract_address: test_contract.contract_address,
     };
-
-    let mut felts = get_state_update(test_contract_dispatcher.contract_address.into())
-        .span()
-        .into_iter();
-    let output: StarknetOsOutput = deserialize_os_output(ref felts);
-    println!("output: {:?}", output);
-
-    let snos_output = get_state_update(test_contract_dispatcher.contract_address.into());
+    let expected_slot_value = 5;
+    let snos_output = get_state_update(
+        test_contract_dispatcher.contract_address.into(),
+        test_contract_dispatcher.get_storage_slots().slot,
+        expected_slot_value,
+    );
 
     snf::start_cheat_caller_address(
         sharding_contract_config_dispatcher.contract_address, c::OWNER(),
     );
     sharding_contract_config_dispatcher
         .register_operator(test_contract_component_dispatcher.contract_address);
+
     snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
 
     // Initialize the shard by connecting the test contract to the sharding system
@@ -138,7 +122,7 @@ fn test_update_state() {
     let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
 
     let expected_increment = ShardInitialized {
         initializer: test_contract_component_dispatcher.contract_address, shard_id: 1,
@@ -165,12 +149,11 @@ fn test_update_state() {
 
     //Counter is updated by snos_output
     let counter = test_contract_dispatcher.get_counter();
-    assert!(counter == 5, "Counter is not set");
+    assert!(counter == expected_slot_value, "Counter is not set");
     println!("counter: {:?}", counter);
 
     // Verify that an unchanged storage slot remains at its default value
-    let unchanged_slot = test_contract_dispatcher
-        .read_storage_slot(0x7B62949C85C6AF8A50C11C22927F9302F7A2E40BC93B4C988415915B0F97F09);
+    let unchanged_slot = test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     //TODO! we need to talk about silent consent to not update unsent slots
@@ -179,7 +162,7 @@ fn test_update_state() {
     assert!(shard_id == 1, "Shard id is not set");
 
     test_contract_component_dispatcher
-        .initialize_shard(shard_dispatcher.contract_address, contract_slots_changes.span());
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
 
     let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
     assert!(shard_id == 2, "Wrong shard id");
