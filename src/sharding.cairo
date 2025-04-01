@@ -17,7 +17,6 @@ pub trait ISharding<TContractState> {
 
 #[starknet::contract]
 pub mod sharding {
-    use core::iter::IntoIterator;
     use core::poseidon::{PoseidonImpl};
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,

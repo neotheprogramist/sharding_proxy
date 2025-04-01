@@ -1,6 +1,5 @@
 pub mod sharding;
 pub mod shard_output;
-pub mod snos_output;
 pub mod contract_component;
 pub mod config;
 pub mod test_contract;
