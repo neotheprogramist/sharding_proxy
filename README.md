@@ -94,6 +94,8 @@ Constructor calldata is one felt252 value:
 
 #### Initialize the test contract with the sharding system
 
+To initialize shard you need to provide StorageSlotWithContract array which contains contract address, slot and crd_type for each slot you want to change.
+
 ```bash
 ./scripts/invoke_initialize_shard.sh
 ```

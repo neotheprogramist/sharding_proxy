@@ -8,7 +8,8 @@ use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
 use sharding_tests::sharding::CRDType;
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized, ContractSlotUpdated};
+use sharding_tests::sharding::CRDTStorageSlot;
 
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
@@ -435,4 +436,708 @@ fn test_multiple_crd_operations() {
     println!("Counter after Set operation: {:?}", counter);
 
     println!("All CRDT operations completed successfully");
+
+}
+
+#[test]
+#[should_panic(expected: ('Sharding already initialized',))]
+fn test_lock_after_lock_fails() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Lock operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
+
+    // First initialization with Lock
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+
+    // Second initialization with Lock - should fail
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+}
+
+#[test]
+#[should_panic(expected: ('Sharding already initialized',))]
+fn test_lock_after_add_fails() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Add operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // First initialization with Add
+    let add_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![add_slots_changes].span());
+
+    // Second initialization with Lock - should fail
+    let lock_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![lock_slots_changes].span());
+}
+
+#[test]
+#[should_panic(expected: ('Sharding already initialized',))]
+fn test_lock_after_set_fails() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Set operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // First initialization with Set
+    let set_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![set_slots_changes].span());
+
+    // Second initialization with Lock - should fail
+    let lock_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![lock_slots_changes].span());
+}
+
+#[test]
+#[should_panic(expected: ('Sharding already initialized',))]
+fn test_set_after_add_fails() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Add operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // First initialization with Add
+    let add_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![add_slots_changes].span());
+
+    // Second initialization with Set - should fail
+    let set_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![set_slots_changes].span());
+}
+
+#[test]
+#[should_panic(expected: ('Sharding already initialized',))]
+fn test_add_after_set_fails() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Set operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // First initialization with Set
+    let set_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![set_slots_changes].span());
+
+    // Second initialization with Add - should fail
+    let add_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![add_slots_changes].span());
+}
+
+#[test]
+fn test_two_times_add() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // Test Add after Add - should work
+    let add_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![add_slots_changes].span());
+    
+    // Second initialization with Add - should work
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![add_slots_changes].span());
+    
+    // Verify shard ID incremented
+    let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
+    assert!(shard_id == 2, "Shard ID should be 2 after second initialization");
+    
+    println!("All valid CRD combinations passed");
+}
+
+
+#[test]
+fn test_two_times_set() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // Test Set after Set - should work
+    let set_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Set);
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![set_slots_changes].span());
+    
+    // Second initialization with Set - should work
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![set_slots_changes].span());
+    
+    // Verify shard ID incremented
+    let shard_id = shard_dispatcher.get_shard_id(test_contract_dispatcher.contract_address);
+    assert!(shard_id == 2, "Shard ID should be 2 after second initialization");
+    
+    println!("All valid CRD combinations passed");
+}
+
+
+#[test]
+fn test_too_many_lock_updates_empty_event() {
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Lock operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
+
+    // Initialize the shard
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+
+    // Create SNOS output
+    let snos_output = get_state_update(
+        test_contract_dispatcher.contract_address.into(),
+        test_contract_dispatcher.get_storage_slots(CRDType::Lock).slot,
+        5
+    );
+
+    // First update_state - should work
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Lock);
+
+    let expected_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 1, slots_to_change: array![CRDTStorageSlot {
+            key: test_contract_dispatcher.get_storage_slots(CRDType::Lock).slot, value: 5, crd_type: CRDType::Lock,
+        }],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_event.clone()),
+            ),
+        ],
+    );
+
+    // Verify counter is updated
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly");
+
+    // Second update_state - should fail because the slot is already unlocked
+    // This simulates trying to update more times than the init_count
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Lock);
+
+    let expected_empty_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 1, slots_to_change: array![],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_empty_event),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn test_too_many_add_updates_empty_event() {
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Add operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+
+    // Initialize the shard
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+
+    // Create SNOS output
+    let snos_output = get_state_update(
+        test_contract_dispatcher.contract_address.into(),
+        test_contract_dispatcher.get_storage_slots(CRDType::Add).slot,
+        5
+    );
+
+    // First update_state - should work
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Add);
+
+    let expected_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 1, slots_to_change: array![CRDTStorageSlot {
+            key: test_contract_dispatcher.get_storage_slots(CRDType::Add).slot, value: 5, crd_type: CRDType::Add,
+        }],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_event.clone()),
+            ),
+        ],
+    );
+
+    // Verify counter is updated
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly");
+
+    // Second update_state - should fail because the slot is already unlocked
+    // This simulates trying to update more times than the init_count
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Add);
+
+    let expected_empty_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 1, slots_to_change: array![],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_empty_event),
+            ),
+        ],
+    );
+}
+
+#[test]
+fn test_two_times_init_add_and_two_updates() {
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    // Initialize the shard with Add operation type
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Add);
+
+    // Initialize the shard
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+
+    // Initialize the shard again
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+
+    // Create SNOS output
+    let snos_output = get_state_update(
+        test_contract_dispatcher.contract_address.into(),
+        test_contract_dispatcher.get_storage_slots(CRDType::Add).slot,
+        5
+    );
+
+    // First update_state - should work
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
+    shard_dispatcher.update_state(snos_output.span(), 2, CRDType::Add);
+
+    let expected_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 2, slots_to_change: array![CRDTStorageSlot {
+            key: test_contract_dispatcher.get_storage_slots(CRDType::Add).slot, value: 5, crd_type: CRDType::Add,
+        }],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_event.clone()),
+            ),
+        ],
+    );
+
+    // Verify counter is updated
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly");
+
+    // Second update_state - should work
+    shard_dispatcher.update_state(snos_output.span(), 2, CRDType::Add);
+
+    let expected_second_update_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 2, slots_to_change: array![CRDTStorageSlot {
+            key: test_contract_dispatcher.get_storage_slots(CRDType::Add).slot, value: 5, crd_type: CRDType::Add,
+        }],
+    };
+    
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 10, "Counter is not updated correctly");
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_second_update_event),
+            ),
+        ],
+    );
+
+    // Third update_state - should return empty event
+    shard_dispatcher.update_state(snos_output.span(), 2, CRDType::Add);
+
+    let expected_empty_event = ContractSlotUpdated {
+        contract_address: test_contract_dispatcher.contract_address, shard_id: 2, slots_to_change: array![],
+    };
+
+    sharding_spy
+    .assert_emitted(
+        @array![
+            (
+                shard_dispatcher.contract_address,
+                ShardingEvent::ContractSlotUpdated(expected_empty_event),
+            ),
+        ],
+    );
+}
+
+
+#[test]
+fn test_multiple_initializations_and_updates() {
+    // Deploy the sharding contract
+    let (sharding, _) = deploy_sharding_with_owner(owner: c::OWNER().into());
+
+    // Deploy the test contract
+    let (test_contract, _) = deploy_test_contract_with_owner(owner: c::OWNER().into());
+
+    let shard_dispatcher = IShardingDispatcher { contract_address: sharding.contract_address };
+    let sharding_contract_config_dispatcher = IConfigDispatcher {
+        contract_address: sharding.contract_address,
+    };
+
+    let test_contract_dispatcher = ITestContractDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+    let test_contract_component_dispatcher = IContractComponentDispatcher {
+        contract_address: test_contract.contract_address,
+    };
+
+    // Register the test contract as an operator
+    snf::start_cheat_caller_address(
+        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+    );
+    sharding_contract_config_dispatcher
+        .register_operator(test_contract_component_dispatcher.contract_address);
+    snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
+
+    snf::start_cheat_caller_address(
+        test_contract_component_dispatcher.contract_address, c::OWNER(),
+    );
+
+    // Initialize the shard multiple times with Lock operation type
+    let contract_slots_changes = test_contract_dispatcher.get_storage_slots(CRDType::Lock);
+
+    // First initialization
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+    
+    // Create SNOS output
+    let snos_output = get_state_update(
+        test_contract_dispatcher.contract_address.into(),
+        test_contract_dispatcher.get_storage_slots(CRDType::Lock).slot,
+        5
+    );
+
+    // First update_state
+    snf::start_cheat_caller_address(
+        shard_dispatcher.contract_address, test_contract_component_dispatcher.contract_address,
+    );
+    shard_dispatcher.update_state(snos_output.span(), 1, CRDType::Lock);
+
+    // Verify counter is updated
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly after first update");
+
+    // Second initialization
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+    
+    // Second update_state
+    shard_dispatcher.update_state(snos_output.span(), 2, CRDType::Lock);
+
+    // Verify counter is updated again
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly after second update");
+
+    // Third initialization
+    test_contract_component_dispatcher
+        .initialize_shard(shard_dispatcher.contract_address, array![contract_slots_changes].span());
+    
+    // Third update_state
+    shard_dispatcher.update_state(snos_output.span(), 3, CRDType::Lock);
+
+    // Verify counter is updated again
+    let counter = test_contract_dispatcher.get_counter();
+    assert!(counter == 5, "Counter is not updated correctly after third update");
+
+    println!("Multiple initializations and updates completed successfully");
 }
