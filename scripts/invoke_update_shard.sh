@@ -8,7 +8,7 @@ CALLDATA="$OUTPUT_LENGTH $SNOS_OUTPUT $SHARD_ID $CRD_TYPE"
 
 sncast invoke \
     --contract-address "$(cat sharding_contract_address.txt)" \
-    --function "update_state" \
+    --function "update_contract_state" \
     --fee-token eth \
     --calldata $CALLDATA
     
