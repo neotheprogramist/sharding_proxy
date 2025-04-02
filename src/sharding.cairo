@@ -1,18 +1,11 @@
 use starknet::{ContractAddress};
+use sharding_tests::contract_component::CRDType;
 
 #[derive(Drop, Serde, starknet::Store, Hash, Copy, Debug)]
 pub struct StorageSlotWithContract {
     pub contract_address: ContractAddress,
     pub slot: felt252,
     pub crd_type: CRDType,
-}
-
-#[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
-pub enum CRDType {
-    Add,
-    #[default]
-    Lock,
-    Set,
 }
 
 #[derive(Drop, Serde, Hash, Copy, Debug)]
@@ -35,7 +28,6 @@ pub trait ISharding<TContractState> {
 
 #[starknet::contract]
 pub mod sharding {
-    use core::iter::IntoIterator;
     use core::poseidon::{PoseidonImpl};
     use openzeppelin::access::ownable::{
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
@@ -44,7 +36,7 @@ pub mod sharding {
         get_caller_address, ContractAddress,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
-    use sharding_tests::snos_output::deserialize_os_output;
+    use sharding_tests::shard_output::ShardOutput;
     use super::ISharding;
     use super::StorageSlotWithContract;
     use super::CRDType;
@@ -80,7 +72,7 @@ pub mod sharding {
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        ShardingInitialized: ShardingInitialized,
+        ShardInitialized: ShardInitialized,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
@@ -88,7 +80,7 @@ pub mod sharding {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct ShardingInitialized {
+    pub struct ShardInitialized {
         pub initializer: ContractAddress,
         pub shard_id: felt252,
         pub storage_slots: Span<StorageSlotWithContract>,
@@ -125,7 +117,7 @@ pub mod sharding {
 
             self
                 .emit(
-                    ShardingInitialized {
+                    ShardInitialized {
                         initializer: caller, shard_id: new_shard_id, storage_slots: storage_slots,
                     },
                 );
@@ -139,15 +131,15 @@ pub mod sharding {
         ) {
             self.config.assert_only_owner_or_operator();
 
-            let mut _snos_output_iter = snos_output.into_iter();
-            let program_output_struct = deserialize_os_output(ref _snos_output_iter);
+            let mut snos_output = snos_output;
+            let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
 
             assert(
-                program_output_struct.state_diff.contracts.span().len() != 0,
+                program_output_struct.state_diff.span().len() != 0,
                 Errors::NO_CONTRACTS_SUBMITTED,
             );
 
-            for contract in program_output_struct.state_diff.contracts.span() {
+            for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
                     .expect('Invalid contract address');
@@ -173,7 +165,7 @@ pub mod sharding {
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
-                    contract_dispatcher.update_state(storage_changes, shard_id);
+                    contract_dispatcher.update_state(storage_changes, shard_id, contract_address);
                 }
             }
         }
