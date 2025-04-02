@@ -20,7 +20,7 @@ pub trait ISharding<TContractState> {
     fn initialize_sharding(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
     fn update_contract_state(
-        ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252, crd_type: CRDType,
+        ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252
     );
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
@@ -39,7 +39,6 @@ pub mod sharding {
     use sharding_tests::shard_output::ShardOutput;
     use super::ISharding;
     use super::StorageSlotWithContract;
-    use super::CRDType;
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
     use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
@@ -119,7 +118,6 @@ pub mod sharding {
             ref self: ContractState,
             snos_output: Span<felt252>,
             shard_id: felt252,
-            crd_type: CRDType,
         ) {
             self.config.assert_only_owner_or_operator();
 
@@ -143,7 +141,10 @@ pub mod sharding {
 
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {
-                        let (storage_key, storage_value) = *storage_change;
+                        let storage_key = *storage_change.key;
+                        let storage_value = *storage_change.value;
+                        let crd_type = *storage_change.crd_type;
+
                         storage_changes
                             .append(
                                 CRDTStorageSlot {
