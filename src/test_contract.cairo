@@ -57,24 +57,12 @@ pub mod test_contract {
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        TestContractInitialized: TestContractInitialized,
         Increment: Increment,
         GameFinished: GameFinished,
-        TestContractUpdated: TestContractUpdated,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
         ContractComponentEvent: contract_component::Event,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    pub struct TestContractInitialized {
-        pub initializer: ContractAddress,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    pub struct TestContractUpdated {
-        pub storage_changes: Span<(felt252, felt252)>,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -89,9 +77,6 @@ pub mod test_contract {
 
     pub mod Errors {
         pub const TEST_CONTRACT_ERROR: felt252 = 'TestContract: test error';
-        pub const ALREADY_INITIALIZED: felt252 = 'TestContract: alr initialized';
-        pub const NOT_INITIALIZED: felt252 = 'TestContract: not initialized';
-        pub const STORAGE_LOCKED: felt252 = 'TestContract: storage is locked';
     }
 
     #[constructor]

@@ -127,9 +127,7 @@ pub mod contract_component {
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
-            println!(
-                "Initializing shard for caller: {:?}, new shard_id: {:?}", caller, new_shard_id,
-            );
+            println!("Initializing shard for caller: {:?}", caller);
 
             for storage_slot in contract_slots_changes {
                 let storage_slot = *storage_slot;
@@ -141,8 +139,6 @@ pub mod contract_component {
 
                 prev_crd_type.verify_crd_type(crd_type);
 
-                println!("Locking storage slots");
-                // Lock this storage key
                 self
                     .slots
                     .write(
@@ -152,8 +148,8 @@ pub mod contract_component {
                 self.shard_id_for_slot.write(storage_slot, new_shard_id);
                 println!("Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
             };
-            // Emit initialization event
 
+            // Emit initialization event
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
@@ -177,6 +173,10 @@ pub mod contract_component {
         ) {
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
+
+            let sharding_address = self.sharding_contract_address.read();
+            let zero_address: ContractAddress = 0.try_into().unwrap();
+            assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
 
             for storage_change in storage_changes.span() {
                 let storage_key = *storage_change.key;
@@ -209,10 +209,8 @@ pub mod contract_component {
                 }
             };
 
-            println!("Updating contract with {} slots", slots_to_change.len());
-
             if slots_to_change.len() == 0 {
-                println!("No slots to update");
+                println!("WARNING: No slots to update for contract: {:?}", contract_address);
             };
 
             self.update_shard(slots_to_change.clone());
@@ -248,10 +246,6 @@ pub mod contract_component {
         fn update_shard(
             ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>,
         ) {
-            let sharding_address = self.sharding_contract_address.read();
-            let zero_address: ContractAddress = 0.try_into().unwrap();
-            assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
-
             for storage_change in storage_changes.span() {
                 let key = *storage_change.key;
                 let value = *storage_change.value;
