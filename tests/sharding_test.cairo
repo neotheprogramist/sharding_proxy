@@ -381,7 +381,7 @@ fn test_multiple_crd_operations() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding already initialized',))]
+#[should_panic(expected: ('L: Sharding already initialized',))]
 fn test_lock_after_lock_fails() {
     let mut setup = setup();
 
@@ -408,7 +408,7 @@ fn test_lock_after_lock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding already initialized',))]
+#[should_panic(expected: ('L: Sharding already initialized',))]
 fn test_lock_after_add_fails() {
     let mut setup = setup();
 
@@ -435,7 +435,7 @@ fn test_lock_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding already initialized',))]
+#[should_panic(expected: ('L: Sharding already initialized',))]
 fn test_lock_after_set_fails() {
     let mut setup = setup();
 
@@ -462,7 +462,7 @@ fn test_lock_after_set_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding already initialized',))]
+#[should_panic(expected: ('S: Sharding already initialized',))]
 fn test_set_after_add_fails() {
     let mut setup = setup();
 
@@ -489,7 +489,7 @@ fn test_set_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding already initialized',))]
+#[should_panic(expected: ('A: Sharding already initialized',))]
 fn test_add_after_set_fails() {
     let mut setup = setup();
 
