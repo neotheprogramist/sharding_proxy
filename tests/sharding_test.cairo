@@ -131,7 +131,6 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> (TestSetup, felt
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    // Sprawdź, czy event ShardInitialized został wyemitowany
     let expected_init = ShardInitialized {
         initializer: setup.test_contract_component_dispatcher.contract_address, shard_id: shard_id,
     };
