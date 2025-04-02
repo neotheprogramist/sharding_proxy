@@ -586,11 +586,11 @@ fn test_too_many_lock_updates_empty_event() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
                 ),
             ],
@@ -611,11 +611,11 @@ fn test_too_many_lock_updates_empty_event() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
                 ),
             ],
@@ -656,11 +656,11 @@ fn test_too_many_add_updates_empty_event() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
                 ),
             ],
@@ -681,11 +681,11 @@ fn test_too_many_add_updates_empty_event() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
                 ),
             ],
@@ -744,11 +744,11 @@ fn test_two_times_init_add_and_two_updates() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
                 ),
             ],
@@ -777,11 +777,11 @@ fn test_two_times_init_add_and_two_updates() {
     assert!(counter == 10, "Counter is not updated correctly");
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_second_update_event),
                 ),
             ],
@@ -797,11 +797,11 @@ fn test_two_times_init_add_and_two_updates() {
     };
 
     setup
-        .sharding_spy
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    setup.shard_dispatcher.contract_address,
+                    setup.test_contract_component_dispatcher.contract_address,
                     ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
                 ),
             ],
