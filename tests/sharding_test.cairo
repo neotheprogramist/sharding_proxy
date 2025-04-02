@@ -123,6 +123,7 @@ fn get_state_update(
     };
     let mut snos_output = array![];
     shard_output.serialize(ref snos_output);
+    println!("snos_output: {:?}", snos_output);
     snos_output
 }
 

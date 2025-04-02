@@ -88,3 +88,14 @@ sncast invoke \
     --function "register_operator" \
     --fee-token eth \
     --calldata "$(cat test_contract_address.txt)"
+
+TEST_CONTRACT_ADDRESS=$(cat test_contract_address.txt)
+echo "Update snos_output.txt with new test contract address: $TEST_CONTRACT_ADDRESS"
+
+cat > snos_output.txt.template << EOL
+0x2 $TEST_CONTRACT_ADDRESS 0x0 0x1 0x1 0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854 0x5 0x2 $TEST_CONTRACT_ADDRESS 0x0 0x1 0x1 0x123 0x2 0x2
+EOL
+
+mv snos_output.txt.template snos_output.txt
+
+echo "snos_output.txt was updated."

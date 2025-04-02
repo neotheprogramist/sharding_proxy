@@ -15,7 +15,7 @@ SLOTS_ARRAY=$(echo "$SLOTS_OUTPUT" | grep -o "response: \[.*\]" | sed 's/respons
 
 echo "Slots array: $SLOTS_ARRAY"
 #Hardcoded array lenght
-ARRAY_LENGHT="1" 
+ARRAY_LENGTH="1" 
 
 CALLDATA="$SHARDING_CONTRACT_ADDRESS $ARRAY_LENGTH $SLOTS_ARRAY"
 
