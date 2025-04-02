@@ -49,7 +49,7 @@ pub trait IContractComponent<TContractState> {
 #[starknet::component]
 pub mod contract_component {
     use starknet::{
-        get_caller_address, ContractAddress,
+        get_caller_address, ContractAddress, get_contract_address,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
     use core::starknet::SyscallResultTrait;
@@ -67,12 +67,10 @@ pub mod contract_component {
     #[storage]
     pub struct Storage {
         slots: Map<(ContractAddress, felt252), (Option<CRDType>, felt252)>,
-        contract_address: ContractAddress,
         sharding_contract_address: ContractAddress,
         locked_slots: Map<StorageSlotWithContract, bool>,
         add_slots: Map<StorageSlotWithContract, bool>,
         set_slots: Map<StorageSlotWithContract, bool>,
-        initializer_contract_address: ContractAddress,
         shard_id: Map<ContractAddress, shard_id>,
         shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
     }
@@ -125,7 +123,9 @@ pub mod contract_component {
             contract_slots_changes: Span<StorageSlotWithContract>,
         ) {
             let caller = get_caller_address();
+            self.sharding_contract_address.write(sharding_contract_address);
             let current_shard_id = self.shard_id.read(caller);
+
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
@@ -155,14 +155,13 @@ pub mod contract_component {
                 println!("Locked slot: {:?} with shard_id: {:?}", storage_slot, new_shard_id);
             };
             // Emit initialization event
-            self.initializer_contract_address.write(caller);
 
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
             sharding_dispatcher.initialize_sharding(contract_slots_changes);
 
-            self.emit(ContractComponentInitialized { contract_address: caller, sharding_contract_address, initializer: caller });
+            self.emit(ContractComponentInitialized { contract_address: get_contract_address(), sharding_contract_address, initializer: caller });
         }
 
         fn update_state(
@@ -250,12 +249,7 @@ pub mod contract_component {
     pub impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
-        fn assert_initialized(self: @ComponentState<TContractState>) {
-            let sharding_address = self.sharding_contract_address.read();
-            let zero_address: ContractAddress = 0.try_into().unwrap();
-            assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
-        }
-
+        
         fn update_shard(
             ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>,
         ) {

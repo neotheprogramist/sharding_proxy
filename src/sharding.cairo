@@ -56,12 +56,8 @@ pub mod sharding {
 
     #[storage]
     struct Storage {
-        locked_slots: Map<StorageSlotWithContract, bool>,
-        add_slots: Map<StorageSlotWithContract, bool>,
-        set_slots: Map<StorageSlotWithContract, bool>,
         initializer_contract_address: ContractAddress,
         shard_id: Map<ContractAddress, shard_id>,
-        shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
         owner: ContractAddress,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
@@ -87,10 +83,6 @@ pub mod sharding {
     }
 
     pub mod Errors {
-        pub const ALREADY_INITIALIZED: felt252 = 'Sharding: Already initialized';
-        pub const NOT_INITIALIZED: felt252 = 'Sharding: Not initialized';
-        pub const STORAGE_LOCKED: felt252 = 'Sharding: Storage is locked';
-        pub const STORAGE_UNLOCKED: felt252 = 'Sharding: Storage is unlocked';
         pub const SHARD_ID_MISMATCH: felt252 = 'Sharding: Shard id mismatch';
         pub const SHARD_ID_NOT_SET: felt252 = 'Sharding: Shard id not set';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Sharding: No contracts';
