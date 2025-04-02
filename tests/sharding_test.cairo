@@ -92,7 +92,10 @@ fn deploy_contract_with_owner(
 }
 
 fn get_state_update(
-    test_contract_address: felt252, storage_slot: felt252, storage_value: felt252, crd_type: CRDType,
+    test_contract_address: felt252,
+    storage_slot: felt252,
+    storage_value: felt252,
+    crd_type: CRDType,
 ) -> Array<felt252> {
     let mut shard_output = ShardOutput {
         state_diff: array![
@@ -101,11 +104,7 @@ fn get_state_update(
                 nonce: 0,
                 class_hash: Option::None,
                 storage_changes: array![
-                    StorageChange {
-                        key: storage_slot,
-                        value: storage_value,
-                        crd_type,
-                    },
+                    StorageChange { key: storage_slot, value: storage_value, crd_type },
                 ],
             },
             // Not locked slot, should not be updated, so we add it this dummy value to the state
@@ -116,9 +115,7 @@ fn get_state_update(
                 class_hash: Option::None,
                 storage_changes: array![
                     StorageChange {
-                        key: NOT_LOCKED_SLOT_ADDRESS,
-                        value: NOT_LOCKED_SLOT_VALUE,
-                        crd_type,
+                        key: NOT_LOCKED_SLOT_ADDRESS, value: NOT_LOCKED_SLOT_VALUE, crd_type,
                     },
                 ],
             },

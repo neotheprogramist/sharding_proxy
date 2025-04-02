@@ -20,7 +20,7 @@ pub trait ISharding<TContractState> {
     fn initialize_sharding(ref self: TContractState, storage_slots: Span<StorageSlotWithContract>);
 
     fn update_contract_state(
-        ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252
+        ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252,
     );
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
@@ -115,9 +115,7 @@ pub mod sharding {
         }
 
         fn update_contract_state(
-            ref self: ContractState,
-            snos_output: Span<felt252>,
-            shard_id: felt252,
+            ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252,
         ) {
             self.config.assert_only_owner_or_operator();
 
