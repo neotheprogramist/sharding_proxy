@@ -20,14 +20,14 @@ impl CRDTypeImpl of CRDTypeTrait {
             CRDType::Add => {
                 assert(
                     self == Option::None || self == Option::Some(CRDType::Add),
-                    'Sharding already initialized',
+                    'A: Sharding already initialized',
                 );
             },
-            CRDType::Lock => { assert(self == Option::None, 'Sharding already initialized'); },
+            CRDType::Lock => { assert(self == Option::None, 'L: Sharding already initialized'); },
             CRDType::Set => {
                 assert(
                     self == Option::None || self == Option::Some(CRDType::Set),
-                    'Sharding already initialized',
+                    'S: Sharding already initialized',
                 );
             },
         }
@@ -65,15 +65,15 @@ pub mod contract_component {
     use starknet::storage_access::StorageAddress;
     use super::CRDType;
     use super::CRDTypeTrait;
+
     type shard_id = felt252;
+    type slot_value = felt252;
+    type init_count = felt252;
 
     #[storage]
     pub struct Storage {
-        slots: Map<(ContractAddress, felt252), (Option<CRDType>, felt252)>,
+        slots: Map<(ContractAddress, slot_value), (Option<CRDType>, init_count)>,
         sharding_contract_address: ContractAddress,
-        locked_slots: Map<StorageSlotWithContract, bool>,
-        add_slots: Map<StorageSlotWithContract, bool>,
-        set_slots: Map<StorageSlotWithContract, bool>,
         shard_id: Map<ContractAddress, shard_id>,
         shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
     }
@@ -107,13 +107,8 @@ pub mod contract_component {
 
     pub mod Errors {
         pub const NOT_INITIALIZED: felt252 = 'Component: Not initialized';
-        pub const ALREADY_INITIALIZED: felt252 = 'Component: Already initialized';
-        pub const STORAGE_LOCKED: felt252 = 'Component: Storage is locked';
         pub const STORAGE_UNLOCKED: felt252 = 'Component: Storage is unlocked';
-        pub const SHARD_ID_MISMATCH: felt252 = 'Component: Shard id mismatch';
-        pub const SHARD_ID_NOT_SET: felt252 = 'Component: Shard id not set';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
-        pub const NO_SLOTS_TO_UPDATE: felt252 = 'No slots to update';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -267,11 +262,11 @@ pub mod contract_component {
                 match crd_type {
                     CRDType::Lock => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                        println!("Lock operation: key={}, value={}", key, value);
+                        println!("Lock: Updating key={}, with value={}", key, value);
                     },
                     CRDType::Set => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                        println!("Set operation: key={}, value={}", key, value);
+                        println!("Set: Updating key={}, with value={}", key, value);
                     },
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
@@ -279,7 +274,7 @@ pub mod contract_component {
                         let new_value = current_value + value;
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                         println!(
-                            "Add operation: key={}, current_value={}, added_value={}, new_value={}",
+                            "Add: Updating key={}, current_value={}, added_value={}, new_value={}",
                             key,
                             current_value,
                             value,
