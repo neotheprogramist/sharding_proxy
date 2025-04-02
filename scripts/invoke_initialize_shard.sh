@@ -17,7 +17,7 @@ echo "Slots array: $SLOTS_ARRAY"
 #Hardcoded array lenght
 ARRAY_LENGHT="1" 
 
-CALLDATA="$SHARDING_CONTRACT_ADDRESS $ARRAY_LENGHT $SLOTS_ARRAY"
+CALLDATA="$SHARDING_CONTRACT_ADDRESS $ARRAY_LENGTH $SLOTS_ARRAY"
 
 echo "Invoking initialize_shard with sharding contract address: $SHARDING_CONTRACT_ADDRESS"
 echo "Calldata: $CALLDATA"
