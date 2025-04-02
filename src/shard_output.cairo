@@ -1,6 +1,7 @@
 use core::array::Array;
 use sharding_tests::contract_component::CRDType;
 
+
 #[derive(Drop, Clone, PartialEq, Serde)]
 pub struct ContractChanges {
     /// The address of the contract.

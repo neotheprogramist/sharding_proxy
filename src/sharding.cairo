@@ -118,14 +118,12 @@ pub mod sharding {
             ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252,
         ) {
             self.config.assert_only_owner_or_operator();
-
             let mut snos_output = snos_output;
             let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
 
             assert(
                 program_output_struct.state_diff.span().len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
             );
-
             for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()

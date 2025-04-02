@@ -12,6 +12,7 @@ use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialize
 use sharding_tests::sharding::CRDTStorageSlot;
 
 use sharding_tests::contract_component::CRDType;
+
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
 use sharding_tests::contract_component::contract_component::{
@@ -87,7 +88,6 @@ fn deploy_contract_with_owner(
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
     let mut spy = snf::spy_events();
-
     (contract_address, spy)
 }
 
@@ -127,22 +127,25 @@ fn get_state_update(
     snos_output
 }
 
+
 fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> (TestSetup, felt252) {
+
     snf::start_cheat_caller_address(
         setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-    let contract_slots_changes = setup.test_contract_dispatcher.get_storage_slots(crd_type);
+let contract_slots_changes = setup.test_contract_dispatcher.get_storage_slots(crd_type);
 
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
             setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
-
+        
     let shard_id = setup
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
+
 
     let expected_init = ShardInitialized {
         initializer: setup.test_contract_component_dispatcher.contract_address,
@@ -197,6 +200,7 @@ fn test_update_state() {
 
     // Verify that an unchanged storage slot remains at its default value
     let unchanged_slot = setup.test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
+
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     //TODO! we need to talk about silent consent to not update unsent slots
