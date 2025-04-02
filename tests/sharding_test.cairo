@@ -129,23 +129,21 @@ fn get_state_update(
 
 
 fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> (TestSetup, felt252) {
-
     snf::start_cheat_caller_address(
         setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-let contract_slots_changes = setup.test_contract_dispatcher.get_storage_slots(crd_type);
+    let contract_slots_changes = setup.test_contract_dispatcher.get_storage_slots(crd_type);
 
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
             setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
-        
+
     let shard_id = setup
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
-
 
     let expected_init = ShardInitialized {
         initializer: setup.test_contract_component_dispatcher.contract_address,
