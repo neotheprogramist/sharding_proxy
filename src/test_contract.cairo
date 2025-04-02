@@ -124,7 +124,7 @@ pub mod test_contract {
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
-        
+
         fn get_storage_slots(
             ref self: ContractState, crd_type: CRDType,
         ) -> StorageSlotWithContract {

@@ -42,7 +42,10 @@ pub trait IContractComponent<TContractState> {
         contract_slots_changes: Span<StorageSlotWithContract>,
     );
     fn update_state(
-        ref self: TContractState, storage_changes: Array<CRDTStorageSlot>, shard_id: felt252, contract_address: ContractAddress,
+        ref self: TContractState,
+        storage_changes: Array<CRDTStorageSlot>,
+        shard_id: felt252,
+        contract_address: ContractAddress,
     );
 }
 
@@ -161,7 +164,14 @@ pub mod contract_component {
             };
             sharding_dispatcher.initialize_sharding(contract_slots_changes);
 
-            self.emit(ContractComponentInitialized { contract_address: get_contract_address(), sharding_contract_address, initializer: caller });
+            self
+                .emit(
+                    ContractComponentInitialized {
+                        contract_address: get_contract_address(),
+                        sharding_contract_address,
+                        initializer: caller,
+                    },
+                );
         }
 
         fn update_state(
@@ -184,9 +194,7 @@ pub mod contract_component {
                 };
 
                 let slot_shard_id = self.shard_id_for_slot.read(slot);
-                let (prev_crd_type, _) = self
-                    .slots
-                    .read((slot.contract_address, slot.slot));
+                let (prev_crd_type, _) = self.slots.read((slot.contract_address, slot.slot));
 
                 println!(
                     "Checking slot (Lock): {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}, prev_crd_type: {:?}",
@@ -199,14 +207,10 @@ pub mod contract_component {
                 if slot_shard_id == shard_id && prev_crd_type == Option::Some(crd_type) {
                     slots_to_change
                         .append(
-                            CRDTStorageSlot {
-                                key: storage_key, value: storage_value, crd_type,
-                            },
+                            CRDTStorageSlot { key: storage_key, value: storage_value, crd_type },
                         );
                 } else {
-                    println!(
-                        "Skipping slot with mismatched shard_id or not locked: {:?}", slot,
-                    );
+                    println!("Skipping slot with mismatched shard_id or not locked: {:?}", slot);
                 }
             };
 
@@ -235,10 +239,7 @@ pub mod contract_component {
                 } else {
                     self
                         .slots
-                        .write(
-                            (slot.contract_address, slot.slot),
-                            (prev_crd_type, init_count - 1),
-                        );
+                        .write((slot.contract_address, slot.slot), (prev_crd_type, init_count - 1));
                 }
             };
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
@@ -249,7 +250,6 @@ pub mod contract_component {
     pub impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
-        
         fn update_shard(
             ref self: ComponentState<TContractState>, storage_changes: Array<CRDTStorageSlot>,
         ) {

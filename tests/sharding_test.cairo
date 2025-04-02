@@ -7,16 +7,16 @@ use snforge_std as snf;
 use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
 use sharding_tests::sharding::IShardingDispatcher;
 use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::sharding::sharding::{
-    Event as ShardingEvent, ShardInitialized,
-};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
 
 use sharding_tests::sharding::CRDTStorageSlot;
 
 use sharding_tests::contract_component::CRDType;
 use sharding_tests::contract_component::IContractComponentDispatcher;
 use sharding_tests::contract_component::IContractComponentDispatcherTrait;
-use sharding_tests::contract_component::contract_component::{Event as ContractComponentEvent, ContractSlotUpdated};
+use sharding_tests::contract_component::contract_component::{
+    Event as ContractComponentEvent, ContractSlotUpdated,
+};
 
 use sharding_tests::config::IConfigDispatcher;
 use sharding_tests::config::IConfigDispatcherTrait;
@@ -134,7 +134,8 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> (TestSetup, felt
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
     let expected_init = ShardInitialized {
-        initializer: setup.test_contract_component_dispatcher.contract_address, shard_id: shard_id,
+        initializer: setup.test_contract_component_dispatcher.contract_address,
+        shard_id: shard_id,
         storage_slots: array![contract_slots_changes].span(),
     };
 

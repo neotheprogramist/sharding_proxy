@@ -127,8 +127,7 @@ pub mod sharding {
             let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
 
             assert(
-                program_output_struct.state_diff.span().len() != 0,
-                Errors::NO_CONTRACTS_SUBMITTED,
+                program_output_struct.state_diff.span().len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
             );
 
             for contract in program_output_struct.state_diff.span() {
