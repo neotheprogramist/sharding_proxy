@@ -5,13 +5,13 @@ SHARDING_CONTRACT_ADDRESS=$(cat sharding_contract_address.txt)
 
 case $1 in 
     "add")
-    SHARD_ID=0
+    SHARD_ID="0 0 0"
     ;;
     "lock")
-    SHARD_ID=1
+    SHARD_ID="1 0 0"
     ;;
     "set")
-    SHARD_ID=2
+    SHARD_ID="2 0 0"
     ;;
 esac
 
