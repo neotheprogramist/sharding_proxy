@@ -1,4 +1,3 @@
-use sharding_tests::sharding::StorageSlotWithContract;
 use sharding_tests::contract_component::CRDType;
 
 #[starknet::interface]
@@ -11,7 +10,7 @@ pub trait ITestContract<TContractState> {
 
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
-    fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> StorageSlotWithContract;
+    fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> CRDType;
 }
 
 #[starknet::contract]
@@ -24,7 +23,6 @@ pub mod test_contract {
     use core::starknet::SyscallResultTrait;
     use super::ITestContract;
     use sharding_tests::contract_component::contract_component;
-    use sharding_tests::sharding::StorageSlotWithContract;
     use sharding_tests::contract_component::CRDType;
     use starknet::syscalls::storage_read_syscall;
 
@@ -110,11 +108,11 @@ pub mod test_contract {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
 
-        fn get_storage_slots(
-            ref self: ContractState, crd_type: CRDType,
-        ) -> StorageSlotWithContract {
-            StorageSlotWithContract {
-                contract_address: get_contract_address(), slot: selector!("counter"), crd_type,
+        fn get_storage_slots(ref self: ContractState, crd_type: CRDType) -> CRDType {
+            match crd_type {
+                CRDType::Add => CRDType::Add((get_contract_address(), selector!("counter"))),
+                CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
+                CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
             }
         }
     }
