@@ -216,7 +216,7 @@ fn test_ending_event() {
     test_contract_dispatcher.increment();
     test_contract_dispatcher.increment();
 
-    let expected_increment = GameFinished { caller: c::OWNER() };
+    let expected_increment = GameFinished { caller: c::OWNER(), shard_id: 0 };
 
     test_spy
         .assert_emitted(

@@ -74,6 +74,7 @@ pub trait IContractComponent<TContractState> {
         shard_id: felt252,
         contract_address: ContractAddress,
     );
+    fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 }
 
 #[starknet::component]
@@ -252,6 +253,12 @@ pub mod contract_component {
                 }
             };
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
+        }
+
+        fn get_shard_id(
+            ref self: ComponentState<TContractState>, contract_address: ContractAddress,
+        ) -> felt252 {
+            self.shard_id.read(contract_address)
         }
     }
 
