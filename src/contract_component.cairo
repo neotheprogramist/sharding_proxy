@@ -16,7 +16,6 @@ pub trait CRDTypeTrait {
 
 impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: Option<CRDType>, crd_type: CRDType) {
-
         let error_msg = match crd_type {
             CRDType::Add => 'A: Sharding already initialized',
             CRDType::Lock => 'L: Sharding already initialized',
@@ -49,7 +48,8 @@ impl CRDTypeImpl of CRDTypeTrait {
     }
     fn contract_address(self: CRDType) -> ContractAddress {
         match self {
-            CRDType::Add((address, _)) | CRDType::Lock((address, _)) | CRDType::Set((address, _)) => address,
+            CRDType::Add((address, _)) | CRDType::Lock((address, _)) |
+            CRDType::Set((address, _)) => address,
         }
     }
 
@@ -191,7 +191,7 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>,
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
-            contract_address: ContractAddress, //todo: remove this
+            contract_address: ContractAddress //todo: remove this
         ) {
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
