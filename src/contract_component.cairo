@@ -16,47 +16,46 @@ pub trait CRDTypeTrait {
 
 impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: Option<CRDType>, crd_type: CRDType) {
+
+        let error_msg = match crd_type {
+            CRDType::Add => 'A: Sharding already initialized',
+            CRDType::Lock => 'L: Sharding already initialized',
+            CRDType::Set => 'S: Sharding already initialized',
+        };
+
         match crd_type {
-            CRDType::Add((
-                _, _,
-            )) => {
+            CRDType::Add => {
                 let is_valid = match self {
                     Option::None => true,
                     Option::Some(prev) => match prev {
-                        CRDType::Add((_, _)) => true,
+                        CRDType::Add => true,
                         _ => false,
                     },
                 };
-                assert(is_valid, 'A: Sharding already initialized');
+                assert(is_valid, error_msg);
             },
-            CRDType::Lock => { assert(self == Option::None, 'L: Sharding already initialized'); },
-            CRDType::Set((
-                _, _,
-            )) => {
+            CRDType::Lock => { assert(self == Option::None, error_msg); },
+            CRDType::Set => {
                 let is_valid = match self {
                     Option::None => true,
                     Option::Some(prev) => match prev {
-                        CRDType::Set((_, _)) => true,
+                        CRDType::Set => true,
                         _ => false,
                     },
                 };
-                assert(is_valid, 'S: Sharding already initialized');
+                assert(is_valid, error_msg);
             },
         }
     }
     fn contract_address(self: CRDType) -> ContractAddress {
         match self {
-            CRDType::Add((address, _)) => address,
-            CRDType::Lock((address, _)) => address,
-            CRDType::Set((address, _)) => address,
+            CRDType::Add((address, _)) | CRDType::Lock((address, _)) | CRDType::Set((address, _)) => address,
         }
     }
 
     fn slot(self: CRDType) -> felt252 {
         match self {
-            CRDType::Add((_, slot)) => slot,
-            CRDType::Lock((_, slot)) => slot,
-            CRDType::Set((_, slot)) => slot,
+            CRDType::Add((_, slot)) | CRDType::Lock((_, slot)) | CRDType::Set((_, slot)) => slot,
         }
     }
 }
@@ -68,7 +67,7 @@ pub trait IContractComponent<TContractState> {
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
     );
-    fn update_state(
+    fn update_shard_state(
         ref self: TContractState,
         storage_changes: Array<(felt252, felt252)>,
         shard_id: felt252,
@@ -188,11 +187,11 @@ pub mod contract_component {
                 );
         }
 
-        fn update_state(
+        fn update_shard_state(
             ref self: ComponentState<TContractState>,
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
-            contract_address: ContractAddress,
+            contract_address: ContractAddress, //todo: remove this
         ) {
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
