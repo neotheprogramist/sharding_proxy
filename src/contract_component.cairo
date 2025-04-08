@@ -98,7 +98,7 @@ pub mod contract_component {
     use starknet::syscalls::storage_read_syscall;
     use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
     use sharding_tests::sharding::StorageSlotWithContract;
-    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use core::starknet::storage::StoragePointerWriteAccess;
     use starknet::storage_access::StorageAddress;
     use super::CRDType;
     use super::CRDTypeTrait;
