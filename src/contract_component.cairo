@@ -6,6 +6,7 @@ pub enum CRDType {
     SetLock: (ContractAddress, slot_value),
     #[default]
     Set: (ContractAddress, slot_value),
+    Lock: (ContractAddress, slot_value),
 }
 
 type slot_key = felt252;
@@ -21,8 +22,9 @@ impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType) {
         let error_msg = match crd_type {
             CRDType::Add => 'A: Sharding already initialized',
-            CRDType::SetLock => 'L: Sharding already initialized',
+            CRDType::SetLock => 'SL:Sharding already initialized',
             CRDType::Set => 'S: Sharding already initialized',
+            CRDType::Lock => 'L: Sharding already initialized',
         };
 
         match crd_type {
@@ -48,18 +50,26 @@ impl CRDTypeImpl of CRDTypeTrait {
                 };
                 assert(is_valid, error_msg);
             },
+            CRDType::Lock => {
+                let is_valid = match self {
+                    CRDType::Set => true,
+                    _ => false,
+                };
+                assert(is_valid, error_msg);
+            },
         }
     }
     fn contract_address(self: CRDType) -> ContractAddress {
         match self {
             CRDType::Add((address, _)) | CRDType::SetLock((address, _)) |
-            CRDType::Set((address, _)) => address,
+            CRDType::Set((address, _)) | CRDType::Lock((address, _)) => address,
         }
     }
 
     fn slot(self: CRDType) -> felt252 {
         match self {
-            CRDType::Add((_, slot)) | CRDType::SetLock((_, slot)) | CRDType::Set((_, slot)) => slot,
+            CRDType::Add((_, slot)) | CRDType::SetLock((_, slot)) | CRDType::Set((_, slot)) |
+            CRDType::Lock((_, slot)) => slot,
         }
     }
 }
@@ -201,6 +211,26 @@ pub mod contract_component {
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
 
+            // First, unlock all Lock type slots
+            for storage_change in storage_changes.span() {
+                let (storage_key, _) = *storage_change;
+                let slot = StorageSlotWithContract {
+                    contract_address: contract_address, slot: storage_key,
+                };
+                let (crd_type, _) = self.slots.read(slot.slot);
+
+                match crd_type {
+                    CRDType::Lock => {
+                        println!("Unlocking Lock slot: {:?}", slot);
+                        self
+                            .slots
+                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                    },
+                    _ => {},
+                }
+            };
+
+            // Then process updates for other types
             for storage_change in storage_changes.span() {
                 let (storage_key, storage_value) = *storage_change;
 
@@ -213,7 +243,7 @@ pub mod contract_component {
                 let (crd_type, _) = self.slots.read(slot.slot);
 
                 println!(
-                    "Checking slot (Lock): {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}, crd_type: {:?}",
+                    "Checking slot: {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}, crd_type: {:?}",
                     slot,
                     slot_shard_id,
                     shard_id,
@@ -298,6 +328,8 @@ pub mod contract_component {
                             value,
                             new_value,
                         );
+                    },
+                    CRDType::Lock => {// Do nothing
                     },
                 }
             };

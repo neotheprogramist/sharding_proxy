@@ -117,6 +117,7 @@ pub mod test_contract {
                     (get_contract_address(), selector!("counter")),
                 ),
                 CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
+                CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
             }
         }
     }
