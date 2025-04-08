@@ -1000,3 +1000,17 @@ fn unlocking_lock_when_no_update() {
 
     setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
 }
+
+#[should_panic(expected: ('L: Sharding already initialized',))]
+#[test]
+fn two_times_lock() {
+    let mut setup = setup();
+
+    // Initialize the shard by connecting the test contract to the sharding system
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    // Initialize again with Lock type
+    initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
+}
