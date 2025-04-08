@@ -134,7 +134,7 @@ pub mod sharding {
                         contract_address: contract_address,
                     };
                     contract_dispatcher
-                        .update_shard_state(storage_changes, shard_id, contract_address);
+                        .update_shard_state(storage_changes, shard_id);
                 }
             }
         }

@@ -113,7 +113,7 @@ pub mod test_contract {
         fn get_storage_slots(ref self: ContractState, crd_type: CRDType) -> CRDType {
             match crd_type {
                 CRDType::Add => CRDType::Add((get_contract_address(), selector!("counter"))),
-                CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
+                CRDType::SetLock => CRDType::SetLock((get_contract_address(), selector!("counter"))),
                 CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
             }
         }
