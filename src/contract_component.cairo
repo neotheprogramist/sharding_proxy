@@ -211,25 +211,6 @@ pub mod contract_component {
             let zero_address: ContractAddress = 0.try_into().unwrap();
             assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
 
-            // First, unlock all Lock type slots
-            for storage_change in storage_changes.span() {
-                let (storage_key, _) = *storage_change;
-                let slot = StorageSlotWithContract {
-                    contract_address: contract_address, slot: storage_key,
-                };
-                let (crd_type, _) = self.slots.read(slot.slot);
-
-                match crd_type {
-                    CRDType::Lock => {
-                        println!("Unlocking Lock slot: {:?}", slot);
-                        self
-                            .slots
-                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
-                    },
-                    _ => {},
-                }
-            };
-
             // Then process updates for other types
             for storage_change in storage_changes.span() {
                 let (storage_key, storage_value) = *storage_change;
@@ -282,6 +263,26 @@ pub mod contract_component {
                     self.slots.write(slot.slot, (crd_type, new_init_count));
                 }
             };
+
+            //Any Lock type slots are unlocked event if they are not updated
+            for storage_change in storage_changes.span() {
+                let (storage_key, _) = *storage_change;
+                let slot = StorageSlotWithContract {
+                    contract_address: contract_address, slot: storage_key,
+                };
+                let (crd_type, _) = self.slots.read(slot.slot);
+
+                match crd_type {
+                    CRDType::Lock => {
+                        println!("Unlocking Lock slot: {:?}", slot);
+                        self
+                            .slots
+                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                    },
+                    _ => {},
+                }
+            };
+
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
         }
 
@@ -329,7 +330,7 @@ pub mod contract_component {
                             new_value,
                         );
                     },
-                    CRDType::Lock => {// Do nothing
+                    CRDType::Lock => { // Do nothing
                     },
                 }
             };
