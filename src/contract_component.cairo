@@ -119,7 +119,6 @@ pub mod contract_component {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         ContractSlotUpdated: ContractSlotUpdated,
-        ContractComponentInitialized: ContractComponentInitialized,
         ContractComponentUpdated: ContractComponentUpdated,
     }
 
@@ -128,13 +127,6 @@ pub mod contract_component {
         pub contract_address: ContractAddress,
         pub shard_id: felt252,
         pub slots_to_change: Array<(felt252, felt252)>,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    pub struct ContractComponentInitialized {
-        pub contract_address: ContractAddress,
-        pub sharding_contract_address: ContractAddress,
-        pub initializer: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -187,15 +179,6 @@ pub mod contract_component {
                 contract_address: sharding_contract_address,
             };
             sharding_dispatcher.initialize_sharding(contract_slots_changes);
-
-            self
-                .emit(
-                    ContractComponentInitialized {
-                        contract_address: get_contract_address(),
-                        sharding_contract_address,
-                        initializer: caller,
-                    },
-                );
         }
 
         fn update_shard_state(
@@ -207,9 +190,6 @@ pub mod contract_component {
             let mut slots_to_change = ArrayTrait::new();
 
             let contract_address = get_contract_address();
-            let sharding_address = self.sharding_contract_address.read();
-            let zero_address: ContractAddress = 0.try_into().unwrap();
-            assert(sharding_address != zero_address, Errors::NOT_INITIALIZED);
 
             // Then process updates for other types
             for storage_change in storage_changes.span() {
@@ -272,14 +252,16 @@ pub mod contract_component {
                 };
                 let (crd_type, _) = self.slots.read(slot.slot);
 
-                match crd_type {
-                    CRDType::Lock => {
-                        println!("Unlocking Lock slot: {:?}", slot);
-                        self
-                            .slots
-                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
-                    },
-                    _ => {},
+                if self.shard_id_for_slot.read(slot) == shard_id {
+                    match crd_type {
+                        CRDType::Lock => {
+                            println!("Unlocking Lock slot: {:?}", slot);
+                            self
+                                .slots
+                                .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                        },
+                        _ => {},
+                    }
                 }
             };
 
