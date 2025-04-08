@@ -133,8 +133,7 @@ pub mod sharding {
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
-                    contract_dispatcher
-                        .update_shard_state(storage_changes, shard_id);
+                    contract_dispatcher.update_shard_state(storage_changes, shard_id);
                 }
             }
         }

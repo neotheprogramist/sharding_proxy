@@ -34,7 +34,7 @@ impl CRDTypeImpl of CRDTypeTrait {
                 };
                 assert(is_valid, error_msg);
             },
-            CRDType::SetLock => { 
+            CRDType::SetLock => {
                 let is_valid = match self {
                     CRDType::Set => true,
                     _ => false,
@@ -72,9 +72,7 @@ pub trait IContractComponent<TContractState> {
         contract_slots_changes: Span<CRDType>,
     );
     fn update_shard_state(
-        ref self: TContractState,
-        storage_changes: Array<(slot_key, slot_value)>,
-        shard_id: felt252,
+        ref self: TContractState, storage_changes: Array<(slot_key, slot_value)>, shard_id: felt252,
     );
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 }
