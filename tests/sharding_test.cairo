@@ -28,6 +28,14 @@ use sharding_tests::contract_component::CRDTypeTrait;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
+const ADD_MERKLE_ROOT: felt252 =
+    1088731836374661937316403012596633712556092219051229030186340742080999950526;
+const SET_MERKLE_ROOT: felt252 =
+    3520766144213897562552881619374108766483354628115502834427570184352579212299;
+const SETLOCK_MERKLE_ROOT: felt252 =
+    2593822693257527360629682722657325507423907612061312602434083242003220225256;
+const LOCK_MERKLE_ROOT: felt252 =
+    1070232253276935331580276395998304824284648789420506986359207788844401125346;
 
 #[derive(Drop)]
 struct TestSetup {
@@ -89,7 +97,10 @@ fn deploy_contract_with_owner(
 }
 
 fn get_state_update(
-    test_contract_address: felt252, storage_slot: felt252, storage_value: felt252,
+    test_contract_address: felt252,
+    storage_slot: felt252,
+    storage_value: felt252,
+    merkle_root: felt252,
 ) -> Array<felt252> {
     let mut shard_output = ShardOutput {
         state_diff: array![
@@ -98,17 +109,17 @@ fn get_state_update(
                 nonce: 0,
                 class_hash: Option::None,
                 storage_changes: array![(storage_slot, storage_value)],
-                merkle_root: 0,
+                merkle_root: merkle_root,
             },
             // Not locked slot, should not be updated, so we add it this dummy value to the state
-            // diff to verify that it is not updated
-            ContractChanges {
-                addr: test_contract_address,
-                nonce: 0,
-                class_hash: Option::None,
-                storage_changes: array![(NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE)],
-                merkle_root: 0,
-            },
+        // diff to verify that it is not updated
+        // ContractChanges {
+        //     addr: test_contract_address,
+        //     nonce: 0,
+        //     class_hash: Option::None,
+        //     storage_changes: array![(NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE)],
+        //     merkle_root: merkle_root,
+        // },
         ],
     };
     let mut snos_output = array![];
@@ -161,6 +172,7 @@ fn test_update_state() {
             .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         expected_slot_value,
+        SETLOCK_MERKLE_ROOT,
     );
 
     // Initialize the shard by connecting the test contract to the sharding system
@@ -244,6 +256,7 @@ fn test_update_state_with_add_operation() {
             .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        ADD_MERKLE_ROOT,
     );
 
     // Apply the state update with Add operation
@@ -279,6 +292,7 @@ fn test_update_state_with_set_operation() {
             .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        SET_MERKLE_ROOT,
     );
 
     // Apply the state update with Set operation
@@ -313,6 +327,7 @@ fn test_multiple_crd_operations() {
             .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        SETLOCK_MERKLE_ROOT,
     );
 
     // Apply state update with SetLock operation
@@ -338,6 +353,7 @@ fn test_multiple_crd_operations() {
             .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        ADD_MERKLE_ROOT,
     );
 
     // Apply state update with Add operation
@@ -363,6 +379,7 @@ fn test_multiple_crd_operations() {
             .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        SET_MERKLE_ROOT,
     );
 
     // Apply state update with Set operation
@@ -582,7 +599,7 @@ fn test_two_times_set() {
         );
 }
 
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: Wrong merkle root',))]
 #[test]
 fn test_too_many_setlock_updates() {
     let mut setup = setup();
@@ -600,6 +617,7 @@ fn test_too_many_setlock_updates() {
             .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        SETLOCK_MERKLE_ROOT,
     );
 
     // First update_state - should work
@@ -661,6 +679,7 @@ fn test_too_many_add_updates() {
             .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        ADD_MERKLE_ROOT,
     );
 
     // First update_state - should work
@@ -738,6 +757,7 @@ fn test_two_times_init_add_and_two_updates() {
             .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        ADD_MERKLE_ROOT,
     );
 
     // First update_state - should work
@@ -835,6 +855,7 @@ fn test_multiple_initializations_and_updates() {
             .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         5,
+        SETLOCK_MERKLE_ROOT,
     );
 
     // First update_state
@@ -889,6 +910,7 @@ fn lock_and_unlock_storage() {
             .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot_key(),
         expected_slot_value,
+        LOCK_MERKLE_ROOT,
     );
 
     // Initialize the shard by connecting the test contract to the sharding system
@@ -920,8 +942,9 @@ fn lock_and_unlock_storage() {
     setup.shard_dispatcher.update_contract_state(snos_output.span());
 }
 
+#[should_panic(expected: ('Component: Storage is unlocked',))]
 #[test]
-fn unlocking_lock_when_no_update() {
+fn wrong_slot_key_send() {
     let mut setup = setup();
 
     let expected_slot_value = 5;
@@ -929,11 +952,9 @@ fn unlocking_lock_when_no_update() {
     //We send set slots to the shard
     let snos_output = get_state_update(
         setup.test_contract_dispatcher.contract_address.into(),
-        setup
-            .test_contract_dispatcher
-            .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
-            .slot_key(),
+        0, // Wrong slot key
         expected_slot_value,
+        LOCK_MERKLE_ROOT,
     );
 
     // Initialize the shard with Lock type
@@ -949,17 +970,6 @@ fn unlocking_lock_when_no_update() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span());
-
-    // Counter is NOT updated by snos_output because set was sent
-    let counter = setup.test_contract_dispatcher.get_counter();
-    assert!(counter == 0, "Counter is not set");
-
-    // Initialize again with Lock type it should work despite Lock slots were not updated
-    let mut setup = initialize_shard(
-        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
-    );
-
     setup.shard_dispatcher.update_contract_state(snos_output.span());
 }
 

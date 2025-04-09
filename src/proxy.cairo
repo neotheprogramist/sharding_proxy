@@ -109,6 +109,7 @@ pub mod sharding {
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
+                    println!("Updating shard state with merkle root: {:?}", *contract.merkle_root);
                     contract_dispatcher.update_shard_state(storage_changes, *contract.merkle_root);
                 }
             }
