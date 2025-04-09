@@ -10,6 +10,8 @@ pub struct ContractChanges {
     pub class_hash: Option<felt252>,
     /// A map from storage key to its new value.
     pub storage_changes: Array<(felt252, felt252)>,
+    /// The merkle root of the contract.
+    pub merkle_root: felt252,
 }
 
 #[derive(Drop, Clone, PartialEq, Serde)]
