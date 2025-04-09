@@ -310,26 +310,105 @@ pub mod contract_component {
                 return 0;
             }
 
+            // Calculate the number of peaks needed and total nodes
+            let mut num_leaves = leaves.len();
+            let mut peaks = ArrayTrait::new();
+            let mut total_nodes = 0;
+
+            while num_leaves > 0 {
+                // Find the largest power of 2 less than or equal to num_leaves
+                let mut peak_size = 1;
+                while peak_size * 2 <= num_leaves {
+                    peak_size *= 2;
+                };
+
+                // For each perfect binary tree:
+                // - Number of leaves = peak_size
+                // - Number of inner nodes = peak_size - 1
+                // So total nodes for this peak = 2 * peak_size - 1
+                total_nodes = total_nodes + 2 * peak_size - 1;
+
+                // Build the peak tree
+                let mut current_leaves = ArrayTrait::new();
+                let start_idx = num_leaves - peak_size;
+                for i in start_idx..num_leaves {
+                    current_leaves.append(*leaves[i]);
+                };
+
+                // Calculate the peak root
+                let peak_root = self.build_merkle_tree(current_leaves);
+                peaks.append(peak_root);
+
+                num_leaves -= peak_size;
+            };
+
+            // Combine all peaks to get the final root
+            self.combine_peaks_with_size(peaks, total_nodes.into())
+        }
+
+        fn build_merkle_tree(
+            ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
+        ) -> felt252 {
+            // The input should always be a perfect binary tree size
+            assert(leaves.len() != 0, 'Cannot build tree with 0 leaves');
+
             while leaves.len() > 1 {
                 let mut new_level = ArrayTrait::new();
                 let mut i = 0;
                 while i < leaves.len() {
                     let mut hash_input = ArrayTrait::new();
                     hash_input.append(*leaves[i]);
-                    if i + 1 < leaves.len() {
-                        hash_input.append(*leaves[i + 1]);
-                    } else {
-                        // If odd number of nodes, duplicate the last one
-                        hash_input.append(*leaves[i]);
-                    }
+                    hash_input.append(*leaves[i + 1]);
                     let hash = poseidon_hash_span(hash_input.span());
                     new_level.append(hash);
                     i += 2;
                 };
                 leaves = new_level;
             };
-
             *leaves[0]
+        }
+
+        fn combine_peaks_with_size(
+            ref self: ComponentState<TContractState>,
+            mut peaks: Array<felt252>,
+            total_nodes: felt252,
+        ) -> felt252 {
+            if peaks.len() == 0 {
+                return 0;
+            }
+
+            if peaks.len() == 1 {
+                // Even for single peak, we need to hash it with total nodes
+                let mut final_hash_input = ArrayTrait::new();
+                final_hash_input.append(*peaks[0]);
+                final_hash_input.append(total_nodes);
+                return poseidon_hash_span(final_hash_input.span());
+            }
+
+            // Combine peaks into a right-skewed tree
+            let mut result = *peaks[peaks.len() - 1];
+            let mut i = peaks.len() - 2;
+
+            // Continue until i reaches 0
+            while i != 0 {
+                let mut hash_input = ArrayTrait::new();
+                hash_input.append(*peaks[i]);
+                hash_input.append(result);
+                result = poseidon_hash_span(hash_input.span());
+                i -= 1;
+            };
+
+            // Handle the last element (i == 0)
+            let mut hash_input = ArrayTrait::new();
+            hash_input.append(*peaks[0]);
+            hash_input.append(result);
+            result = poseidon_hash_span(hash_input.span());
+
+            // Final hash with the total number of nodes
+            let mut final_hash_input = ArrayTrait::new();
+            final_hash_input.append(result);
+            final_hash_input.append(total_nodes);
+            poseidon_hash_span(final_hash_input.span())
         }
     }
 }
