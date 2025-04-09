@@ -233,7 +233,7 @@ pub mod contract_component {
             };
 
             self.update_shard(slots_to_change.clone(), contract_address);
-            self.merkle_roots.write(merkle_root, false);
+            // self.merkle_roots.write(merkle_root, false);
 
             for slot_to_unlock in slots_to_change.span() {
                 let (storage_key, _) = *slot_to_unlock;
@@ -250,6 +250,7 @@ pub mod contract_component {
 
                 if new_init_count == 0 {
                     self.slots.write(slot.key, (CRDType::Set((contract_address, slot.key)), 0));
+                    self.merkle_roots.write(merkle_root, false);
                 } else {
                     self.slots.write(slot.key, (crd_type, new_init_count));
                 }

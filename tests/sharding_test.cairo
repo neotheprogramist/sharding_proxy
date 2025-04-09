@@ -26,6 +26,8 @@ use sharding_tests::shard_output::{ShardOutput, ContractChanges};
 use sharding_tests::contract_component::CRDType;
 use sharding_tests::contract_component::CRDTypeTrait;
 
+// use sharding_tests::contract_component::calculate_merkle_root;
+
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
 const ADD_MERKLE_ROOT: felt252 =
@@ -662,7 +664,7 @@ fn test_too_many_setlock_updates() {
     setup.shard_dispatcher.update_contract_state(snos_output.span());
 }
 
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: Wrong merkle root',))]
 #[test]
 fn test_too_many_add_updates() {
     let mut setup = setup();
@@ -986,3 +988,26 @@ fn two_times_lock() {
     // Initialize again with Lock type
     initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
 }
+// #[test]
+// fn test_mmr_calculation() {
+//     let mut setup = setup();
+
+//     // Create an array of 5 leaves with known values
+//     let mut leaves = ArrayTrait::new();
+//     leaves.append(1);
+//     leaves.append(2);
+//     leaves.append(3);
+//     leaves.append(4);
+//     leaves.append(5);
+
+//     // Calculate MMR root using our implementation
+//     let calculated_root =
+//     setup.test_contract_component_dispatcher.calculate_merkle_root(leaves.span());
+
+//     // The expected root hash from Herodotus calculator for leaves [1,2,3,4,5]
+//     // This will be filled after running the test once and checking the calculator
+//     let expected_root = 0; // TODO: Replace with actual value from calculator
+
+//     assert!(calculated_root == expected_root, 'MMR root mismatch');
+// }
+
