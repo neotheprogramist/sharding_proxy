@@ -4,7 +4,7 @@ use sharding_tests::contract_component::CRDType;
 #[derive(Drop, Serde, starknet::Store, Hash, Copy, Debug)]
 pub struct StorageSlotWithContract {
     pub contract_address: ContractAddress,
-    pub slot: felt252,
+    pub key: felt252,
 }
 
 #[starknet::interface]
