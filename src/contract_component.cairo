@@ -271,7 +271,9 @@ pub mod contract_component {
                             new_value,
                         );
                     },
-                    CRDType::Lock => { // Do nothing
+                    CRDType::Lock => {
+                        //Do nothing
+                        println!("Lock: Unlocking");
                     },
                 }
             };
