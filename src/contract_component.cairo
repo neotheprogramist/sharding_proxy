@@ -99,17 +99,17 @@ pub mod contract_component {
     type merkle_root = felt252;
 
     #[derive(Drop, Copy)]
-    pub trait HashTrait{
-        fn hash(input:Span<felt252>) -> felt252;
+    pub trait HashTrait {
+        fn hash(input: Span<felt252>) -> felt252;
     }
-    
-    impl PoseidonHashImpl of HashTrait{
+
+    impl PoseidonHashImpl of HashTrait {
         fn hash(input: Span<felt252>) -> felt252 {
             poseidon_hash_span(input)
         }
     }
 
-    impl PedersenHashImpl of HashTrait{
+    impl PedersenHashImpl of HashTrait {
         fn hash(input: Span<felt252>) -> felt252 {
             let mut pedersen = PedersenTrait::new(0);
             for i in input {
@@ -119,7 +119,7 @@ pub mod contract_component {
         }
     }
 
-    impl KeccakHashImpl of HashTrait{
+    impl KeccakHashImpl of HashTrait {
         fn hash(input: Span<felt252>) -> felt252 {
             let mut hash_input = ArrayTrait::new();
             for i in input {
