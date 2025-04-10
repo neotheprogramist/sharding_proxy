@@ -48,12 +48,21 @@ impl CRDTypeImpl of CRDTypeTrait {
     }
 }
 
+#[derive(Drop, Copy, Serde, Debug)]
+pub enum HashType {
+    #[default]
+    Poseidon,
+    Pedersen,
+    Keccak,
+}
+
 #[starknet::interface]
 pub trait IContractComponent<TContractState> {
     fn initialize_shard(
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
+        hash_type: HashType,
     );
     fn update_shard_state(
         ref self: TContractState,
@@ -80,10 +89,48 @@ pub mod contract_component {
     use super::slot_key;
     use core::array::ArrayTrait;
     use core::poseidon::{poseidon_hash_span, PoseidonImpl};
+    use core::pedersen::{PedersenTrait, PedersenImpl};
+    use core::keccak::{keccak_u256s_le_inputs};
+    use core::hash::HashStateTrait;
+    use super::HashType;
 
     type init_count = felt252;
     type index = felt252;
     type merkle_root = felt252;
+
+    #[derive(Drop, Copy)]
+    pub trait HashTrait{
+        fn hash(input:Span<felt252>) -> felt252;
+    }
+    
+    impl PoseidonHashImpl of HashTrait{
+        fn hash(input: Span<felt252>) -> felt252 {
+            poseidon_hash_span(input)
+        }
+    }
+
+    impl PedersenHashImpl of HashTrait{
+        fn hash(input: Span<felt252>) -> felt252 {
+            let mut pedersen = PedersenTrait::new(0);
+            for i in input {
+                pedersen = pedersen.update(*i);
+            };
+            pedersen.finalize()
+        }
+    }
+
+    impl KeccakHashImpl of HashTrait{
+        fn hash(input: Span<felt252>) -> felt252 {
+            let mut hash_input = ArrayTrait::new();
+            for i in input {
+                let felt_value = *i;
+                let u256_input: u256 = felt_value.try_into().unwrap();
+                hash_input.append(u256_input);
+            };
+            let hash = keccak_u256s_le_inputs(hash_input.span());
+            hash.try_into().unwrap()
+        }
+    }
 
     #[storage]
     pub struct Storage {
@@ -126,6 +173,7 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>,
             sharding_contract_address: ContractAddress,
             contract_slots_changes: Span<CRDType>,
+            hash_type: HashType,
         ) {
             let caller = get_caller_address();
             self.sharding_contract_address.write(sharding_contract_address);
@@ -162,7 +210,15 @@ pub mod contract_component {
             };
 
             // Calculate Merkle root
-            let merkle_root = self.calculate_merkle_root(merkle_leaves);
+            let merkle_root = match hash_type {
+                HashType::Poseidon => self.calculate_merkle_root::<PoseidonHashImpl>(merkle_leaves),
+                HashType::Pedersen => self.calculate_merkle_root::<PedersenHashImpl>(merkle_leaves),
+                HashType::Keccak => self.calculate_merkle_root::<KeccakHashImpl>(merkle_leaves),
+                _ => {
+                    println!("WARNING: Invalid hash type, switching to default: {:?}", hash_type);
+                    self.calculate_merkle_root::<PoseidonHashImpl>(merkle_leaves)
+                },
+            };
             println!("Calculated Merkle root: {:?}", merkle_root);
 
             // Store merkle root
@@ -280,7 +336,7 @@ pub mod contract_component {
             self.emit(ContractComponentUpdated { storage_changes });
         }
 
-        fn calculate_merkle_root(
+        fn calculate_merkle_root<impl H: HashTrait>(
             ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
         ) -> felt252 {
             if leaves.len() == 0 {
@@ -313,17 +369,17 @@ pub mod contract_component {
                 };
 
                 // Calculate the peak root
-                let peak_root = self.build_merkle_tree(current_leaves);
+                let peak_root = self.build_merkle_tree::<H>(current_leaves);
                 peaks.append(peak_root);
 
                 num_leaves -= peak_size;
             };
 
             // Combine all peaks to get the final root
-            self.combine_peaks_with_size(peaks, total_nodes.into())
+            self.combine_peaks_with_size::<H>(peaks, total_nodes.into())
         }
 
-        fn build_merkle_tree(
+        fn build_merkle_tree<impl H: HashTrait>(
             ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
         ) -> felt252 {
             // The input should always be a perfect binary tree size
@@ -336,7 +392,7 @@ pub mod contract_component {
                     let mut hash_input = ArrayTrait::new();
                     hash_input.append(*leaves[i]);
                     hash_input.append(*leaves[i + 1]);
-                    let hash = poseidon_hash_span(hash_input.span());
+                    let hash = H::hash(hash_input.span());
                     new_level.append(hash);
                     i += 2;
                 };
@@ -345,7 +401,7 @@ pub mod contract_component {
             *leaves[0]
         }
 
-        fn combine_peaks_with_size(
+        fn combine_peaks_with_size<impl H: HashTrait>(
             ref self: ComponentState<TContractState>,
             mut peaks: Array<felt252>,
             total_nodes: felt252,
@@ -359,7 +415,7 @@ pub mod contract_component {
                 let mut final_hash_input = ArrayTrait::new();
                 final_hash_input.append(*peaks[0]);
                 final_hash_input.append(total_nodes);
-                return poseidon_hash_span(final_hash_input.span());
+                return H::hash(final_hash_input.span());
             }
 
             // Combine peaks into a right-skewed tree
@@ -371,7 +427,7 @@ pub mod contract_component {
                 let mut hash_input = ArrayTrait::new();
                 hash_input.append(*peaks[i]);
                 hash_input.append(result);
-                result = poseidon_hash_span(hash_input.span());
+                result = H::hash(hash_input.span());
                 i -= 1;
             };
 
@@ -379,13 +435,13 @@ pub mod contract_component {
             let mut hash_input = ArrayTrait::new();
             hash_input.append(*peaks[0]);
             hash_input.append(result);
-            result = poseidon_hash_span(hash_input.span());
+            result = H::hash(hash_input.span());
 
             // Final hash with the total number of nodes
             let mut final_hash_input = ArrayTrait::new();
             final_hash_input.append(result);
             final_hash_input.append(total_nodes);
-            poseidon_hash_span(final_hash_input.span())
+            H::hash(final_hash_input.span())
         }
     }
 }
