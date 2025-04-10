@@ -48,21 +48,12 @@ impl CRDTypeImpl of CRDTypeTrait {
     }
 }
 
-#[derive(Drop, Copy, Serde, Debug)]
-pub enum HashType {
-    #[default]
-    Poseidon,
-    Pedersen,
-    Keccak,
-}
-
 #[starknet::interface]
 pub trait IContractComponent<TContractState> {
     fn initialize_shard(
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
-        hash_type: HashType,
     );
     fn update_shard_state(
         ref self: TContractState,
@@ -92,7 +83,8 @@ pub mod contract_component {
     use core::pedersen::{PedersenTrait, PedersenImpl};
     use core::keccak::{keccak_u256s_le_inputs};
     use core::hash::HashStateTrait;
-    use super::HashType;
+    use cairo_lib::hashing::poseidon::PoseidonHasher;
+    use cairo_lib::data_structures::mmr::mmr::MMRTrait;
 
     type init_count = felt252;
     type index = felt252;
@@ -173,7 +165,6 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>,
             sharding_contract_address: ContractAddress,
             contract_slots_changes: Span<CRDType>,
-            hash_type: HashType,
         ) {
             let caller = get_caller_address();
             self.sharding_contract_address.write(sharding_contract_address);
@@ -210,15 +201,7 @@ pub mod contract_component {
             };
 
             // Calculate Merkle root
-            let merkle_root = match hash_type {
-                HashType::Poseidon => self.calculate_merkle_root::<PoseidonHashImpl>(merkle_leaves),
-                HashType::Pedersen => self.calculate_merkle_root::<PedersenHashImpl>(merkle_leaves),
-                HashType::Keccak => self.calculate_merkle_root::<KeccakHashImpl>(merkle_leaves),
-                _ => {
-                    println!("WARNING: Invalid hash type, switching to default: {:?}", hash_type);
-                    self.calculate_merkle_root::<PoseidonHashImpl>(merkle_leaves)
-                },
-            };
+            let merkle_root = self.calculate_merkle_root(merkle_leaves.clone());
             println!("Calculated Merkle root: {:?}", merkle_root);
 
             // Store merkle root
@@ -236,6 +219,8 @@ pub mod contract_component {
             storage_changes: Array<(felt252, felt252)>,
             merkle_root: felt252,
         ) {
+            println!("Updating shard state for merkle root: {:?}", merkle_root);
+
             assert(self.merkle_roots.read(merkle_root), Errors::WRONG_MERKLE_ROOT);
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
@@ -336,112 +321,19 @@ pub mod contract_component {
             self.emit(ContractComponentUpdated { storage_changes });
         }
 
-        fn calculate_merkle_root<impl H: HashTrait>(
+        fn calculate_merkle_root(
             ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
         ) -> felt252 {
-            if leaves.len() == 0 {
-                return 0;
-            }
+            let mut mmr = MMRTrait::new(PoseidonHasher::hash_double(0, 0), 0);
+            let mut peaks = ArrayTrait::new().span();
 
-            // Calculate the number of peaks needed and total nodes
-            let mut num_leaves = leaves.len();
-            let mut peaks = ArrayTrait::new();
-            let mut total_nodes = 0;
-
-            while num_leaves > 0 {
-                // Find the largest power of 2 less than or equal to num_leaves
-                let mut peak_size = 1;
-                while peak_size * 2 <= num_leaves {
-                    peak_size *= 2;
-                };
-
-                // For each perfect binary tree:
-                // - Number of leaves = peak_size
-                // - Number of inner nodes = peak_size - 1
-                // So total nodes for this peak = 2 * peak_size - 1
-                total_nodes = total_nodes + 2 * peak_size - 1;
-
-                // Build the peak tree
-                let mut current_leaves = ArrayTrait::new();
-                let start_idx = num_leaves - peak_size;
-                for i in start_idx..num_leaves {
-                    current_leaves.append(*leaves[i]);
-                };
-
-                // Calculate the peak root
-                let peak_root = self.build_merkle_tree::<H>(current_leaves);
-                peaks.append(peak_root);
-
-                num_leaves -= peak_size;
+            for leaf in leaves.span() {
+                match mmr.append(*leaf, peaks) {
+                    Result::Ok((_, new_peaks)) => { peaks = new_peaks; },
+                    Result::Err(err) => { panic!("Error: {:?}", err); },
+                }
             };
-
-            // Combine all peaks to get the final root
-            self.combine_peaks_with_size::<H>(peaks, total_nodes.into())
-        }
-
-        fn build_merkle_tree<impl H: HashTrait>(
-            ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
-        ) -> felt252 {
-            // The input should always be a perfect binary tree size
-            assert(leaves.len() != 0, 'Cannot build tree with 0 leaves');
-
-            while leaves.len() > 1 {
-                let mut new_level = ArrayTrait::new();
-                let mut i = 0;
-                while i < leaves.len() {
-                    let mut hash_input = ArrayTrait::new();
-                    hash_input.append(*leaves[i]);
-                    hash_input.append(*leaves[i + 1]);
-                    let hash = H::hash(hash_input.span());
-                    new_level.append(hash);
-                    i += 2;
-                };
-                leaves = new_level;
-            };
-            *leaves[0]
-        }
-
-        fn combine_peaks_with_size<impl H: HashTrait>(
-            ref self: ComponentState<TContractState>,
-            mut peaks: Array<felt252>,
-            total_nodes: felt252,
-        ) -> felt252 {
-            if peaks.len() == 0 {
-                return 0;
-            }
-
-            if peaks.len() == 1 {
-                // Even for single peak, we need to hash it with total nodes
-                let mut final_hash_input = ArrayTrait::new();
-                final_hash_input.append(*peaks[0]);
-                final_hash_input.append(total_nodes);
-                return H::hash(final_hash_input.span());
-            }
-
-            // Combine peaks into a right-skewed tree
-            let mut result = *peaks[peaks.len() - 1];
-            let mut i = peaks.len() - 2;
-
-            // Continue until i reaches 0
-            while i != 0 {
-                let mut hash_input = ArrayTrait::new();
-                hash_input.append(*peaks[i]);
-                hash_input.append(result);
-                result = H::hash(hash_input.span());
-                i -= 1;
-            };
-
-            // Handle the last element (i == 0)
-            let mut hash_input = ArrayTrait::new();
-            hash_input.append(*peaks[0]);
-            hash_input.append(result);
-            result = H::hash(hash_input.span());
-
-            // Final hash with the total number of nodes
-            let mut final_hash_input = ArrayTrait::new();
-            final_hash_input.append(result);
-            final_hash_input.append(total_nodes);
-            H::hash(final_hash_input.span())
+            mmr.root
         }
     }
 }

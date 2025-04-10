@@ -1,6 +1,5 @@
 use core::traits::Into;
 use core::result::ResultTrait;
-use core::poseidon::PoseidonImpl;
 use openzeppelin_testing::constants as c;
 use snforge_std as snf;
 use starknet::ContractAddress;
@@ -25,17 +24,22 @@ use sharding_tests::shard_output::{ShardOutput, ContractChanges};
 
 use sharding_tests::contract_component::CRDType;
 use sharding_tests::contract_component::CRDTypeTrait;
-use sharding_tests::contract_component::HashType;
+
+use core::poseidon::PoseidonImpl;
+use core::pedersen::PedersenImpl;
+
+use cairo_lib::hashing::poseidon::PoseidonHasher;
+
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
 const ADD_MERKLE_ROOT: felt252 =
-    1088731836374661937316403012596633712556092219051229030186340742080999950526;
+    779064544854480255227839082336946336372267716287715413856287479843627013220;
 const SET_MERKLE_ROOT: felt252 =
-    3520766144213897562552881619374108766483354628115502834427570184352579212299;
+    1820900394438868421898668848464507379717228716050868936240045097420034363143;
 const SETLOCK_MERKLE_ROOT: felt252 =
-    2593822693257527360629682722657325507423907612061312602434083242003220225256;
+    2071308509983111860521518620786586802128319797495509638328849317572348365692;
 const LOCK_MERKLE_ROOT: felt252 =
-    1070232253276935331580276395998304824284648789420506986359207788844401125346;
+    1319744686493494289001140284126775648608543786519423918590514447206888306738;
 
 #[derive(Drop)]
 struct TestSetup {
@@ -138,9 +142,7 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     let expected_init = ShardInitialized {
@@ -414,18 +416,14 @@ fn test_setlock_after_setlock_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Second initialization with SetLock - should fail
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 }
 
@@ -446,9 +444,7 @@ fn test_setlock_after_add_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![add_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 
     // Second initialization with SetLock - should fail
@@ -458,9 +454,7 @@ fn test_setlock_after_add_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![lock_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![lock_slots_changes].span(),
         );
 }
 
@@ -481,9 +475,7 @@ fn test_set_after_setlock_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![lock_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![lock_slots_changes].span(),
         );
 
     // Second initialization with Set
@@ -493,9 +485,7 @@ fn test_set_after_setlock_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![set_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 }
 
@@ -516,9 +506,7 @@ fn test_set_after_add_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![add_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 
     // Second initialization with Set - should fail
@@ -528,9 +516,7 @@ fn test_set_after_add_fails() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![set_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 }
 
@@ -550,9 +536,7 @@ fn test_add_after_set() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![set_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 
     // Second initialization with Add - should fail
@@ -562,9 +546,7 @@ fn test_add_after_set() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![add_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 }
 
@@ -583,18 +565,14 @@ fn test_two_times_add() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![add_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 
     // Second initialization with Add - should work
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![add_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 }
 
@@ -614,18 +592,14 @@ fn test_two_times_set() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![set_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 
     // Second initialization with Set - should work
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![set_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 }
 
@@ -769,18 +743,14 @@ fn test_two_times_init_add_and_two_updates() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Initialize the shard again
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Create SNOS output
@@ -878,9 +848,7 @@ fn test_multiple_initializations_and_updates() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Create SNOS output
@@ -909,9 +877,7 @@ fn test_multiple_initializations_and_updates() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Second update_state
@@ -925,9 +891,7 @@ fn test_multiple_initializations_and_updates() {
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
-            setup.shard_dispatcher.contract_address,
-            array![contract_slots_changes].span(),
-            HashType::Poseidon,
+            setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
     // Third update_state
