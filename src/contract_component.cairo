@@ -20,44 +20,18 @@ pub trait CRDTypeTrait {
 
 impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType) {
-        let error_msg = match crd_type {
-            CRDType::Add => 'A: Sharding already initialized',
-            CRDType::SetLock => 'SL:Sharding already initialized',
-            CRDType::Set => 'S: Sharding already initialized',
-            CRDType::Lock => 'L: Sharding already initialized',
+        let (is_valid, error_msg) = match (self, crd_type) {
+            (CRDType::Add, CRDType::Add) => (true, 'A: Sharding already initialized'),
+            (CRDType::Set, CRDType::Add) => (true, 'A: Sharding already initialized'),
+            (CRDType::Set, CRDType::SetLock) => (true, 'SL:Sharding already initialized'),
+            (CRDType::Set, CRDType::Set) => (true, 'S: Sharding already initialized'),
+            (CRDType::Set, CRDType::Lock) => (true, 'L: Sharding already initialized'),
+            (_, CRDType::Add) => (false, 'A: Sharding already initialized'),
+            (_, CRDType::SetLock) => (false, 'SL:Sharding already initialized'),
+            (_, CRDType::Set) => (false, 'S: Sharding already initialized'),
+            (_, CRDType::Lock) => (false, 'L: Sharding already initialized'),
         };
-
-        match crd_type {
-            CRDType::Add => {
-                let is_valid = match self {
-                    CRDType::Add => true,
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::SetLock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Set => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Lock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-        }
+        assert(is_valid, error_msg);
     }
     fn contract_address(self: CRDType) -> ContractAddress {
         match self {
