@@ -111,7 +111,7 @@ fn get_state_update(
                 storage_changes: array![(storage_slot, storage_value)],
                 merkle_root: merkle_root,
             },
-            // Not locked slot, should not be updated, so we add it this dummy value to the state
+        // Not locked slot, should not be updated, so we add it this dummy value to the state
         // diff to verify that it is not updated
         // ContractChanges {
         //     addr: test_contract_address,
