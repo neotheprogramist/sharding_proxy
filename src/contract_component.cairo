@@ -80,49 +80,13 @@ pub mod contract_component {
     use super::slot_key;
     use core::array::ArrayTrait;
     use core::poseidon::{poseidon_hash_span, PoseidonImpl};
-    use core::pedersen::{PedersenTrait, PedersenImpl};
-    use core::keccak::{keccak_u256s_le_inputs};
-    use core::hash::HashStateTrait;
+    use core::pedersen::PedersenImpl;
     use cairo_lib::hashing::poseidon::PoseidonHasher;
     use cairo_lib::data_structures::mmr::mmr::MMRTrait;
 
     type init_count = felt252;
     type index = felt252;
     type merkle_root = felt252;
-
-    #[derive(Drop, Copy)]
-    pub trait HashTrait {
-        fn hash(input: Span<felt252>) -> felt252;
-    }
-
-    impl PoseidonHashImpl of HashTrait {
-        fn hash(input: Span<felt252>) -> felt252 {
-            poseidon_hash_span(input)
-        }
-    }
-
-    impl PedersenHashImpl of HashTrait {
-        fn hash(input: Span<felt252>) -> felt252 {
-            let mut pedersen = PedersenTrait::new(0);
-            for i in input {
-                pedersen = pedersen.update(*i);
-            };
-            pedersen.finalize()
-        }
-    }
-
-    impl KeccakHashImpl of HashTrait {
-        fn hash(input: Span<felt252>) -> felt252 {
-            let mut hash_input = ArrayTrait::new();
-            for i in input {
-                let felt_value = *i;
-                let u256_input: u256 = felt_value.try_into().unwrap();
-                hash_input.append(u256_input);
-            };
-            let hash = keccak_u256s_le_inputs(hash_input.span());
-            hash.try_into().unwrap()
-        }
-    }
 
     #[storage]
     pub struct Storage {
@@ -189,7 +153,7 @@ pub mod contract_component {
                     .append(
                         match crd_type {
                             CRDType::Add => 1,
-                            CRDType::SetLock => 2,
+                            CRDType::SetLock => 2, // add to_felt method
                             CRDType::Set => 3,
                             CRDType::Lock => 4,
                         },

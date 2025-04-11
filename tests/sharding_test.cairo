@@ -115,15 +115,6 @@ fn get_state_update(
                 storage_changes: array![(storage_slot, storage_value)],
                 merkle_root: merkle_root,
             },
-            // Not locked slot, should not be updated, so we add it this dummy value to the state
-        // diff to verify that it is not updated
-        // ContractChanges {
-        //     addr: test_contract_address,
-        //     nonce: 0,
-        //     class_hash: Option::None,
-        //     storage_changes: array![(NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE)],
-        //     merkle_root: merkle_root,
-        // },
         ],
     };
     let mut snos_output = array![];
