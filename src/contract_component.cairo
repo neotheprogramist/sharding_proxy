@@ -16,6 +16,7 @@ pub trait CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType);
     fn contract_address(self: CRDType) -> ContractAddress;
     fn slot_key(self: CRDType) -> slot_key;
+    fn to_felt(self: CRDType) -> felt252;
 }
 
 impl CRDTypeImpl of CRDTypeTrait {
@@ -44,6 +45,15 @@ impl CRDTypeImpl of CRDTypeTrait {
         match self {
             CRDType::Add((_, slot)) | CRDType::SetLock((_, slot)) | CRDType::Set((_, slot)) |
             CRDType::Lock((_, slot)) => slot,
+        }
+    }
+
+    fn to_felt(self: CRDType) -> felt252 {
+        match self {
+            CRDType::Add(_) => 1,
+            CRDType::SetLock(_) => 2,
+            CRDType::Set(_) => 3,
+            CRDType::Lock(_) => 4,
         }
     }
 }
@@ -149,15 +159,7 @@ pub mod contract_component {
                 // Calculate hash of slot and CRDType variant
                 let mut hash_input = ArrayTrait::new();
                 hash_input.append(crd_type.slot_key());
-                hash_input
-                    .append(
-                        match crd_type {
-                            CRDType::Add => 1,
-                            CRDType::SetLock => 2, // add to_felt method
-                            CRDType::Set => 3,
-                            CRDType::Lock => 4,
-                        },
-                    );
+                hash_input.append(crd_type.to_felt());
                 let hash = poseidon_hash_span(hash_input.span());
                 merkle_leaves.append(hash);
 
@@ -212,7 +214,6 @@ pub mod contract_component {
             };
 
             self.update_shard(slots_to_change.clone(), contract_address);
-            // self.merkle_roots.write(merkle_root, false);
 
             for slot_to_unlock in slots_to_change.span() {
                 let (storage_key, _) = *slot_to_unlock;
