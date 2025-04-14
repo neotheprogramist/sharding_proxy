@@ -153,13 +153,14 @@ scarb build
 
 ### Example of snos_output.txt file:
 
-first element 0x1 is length of the output, then each element is a felt252 value of snos output,
-0x1 inner array length,
-0x1 Lock/Add/Set/SetLock variant,
-0x03848ec13a1bd89afecb7399fa2d0c0becc43aa01d82da046f77074a3be122ac is contract address,
-0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854 slot key,
-0x5 slot value,
-0x25DBAE090B03459D9C6F49CEBC642558115415AC9B0F5ECFCA54089AE4D67E2 merkle root
+0x1 is length of the output,
+0x03848ec13a1bd89afecb7399fa2d0c0becc43aa01d82da046f77074a3be122ac - contract address (where slots are changed),
+0x0,
+0x1 - inner array length (how many slots),
+0x1 - Lock/Add/Set/SetLock variant,
+0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854 - slot key,
+0x5 - slot value,
+0x25DBAE090B03459D9C6F49CEBC642558115415AC9B0F5ECFCA54089AE4D67E2 - merkle root.
 
 ```
 0x1 0x03848ec13a1bd89afecb7399fa2d0c0becc43aa01d82da046f77074a3be122ac 0x0 0x1 0x1 0x7EBCC807B5C7E19F245995A55AED6F46F5F582F476A886B91B834B0DDF5854 0x5 0x25DBAE090B03459D9C6F49CEBC642558115415AC9B0F5ECFCA54089AE4D67E2

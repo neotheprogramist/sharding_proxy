@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# This script is used only for testing purposes, not for production.
+# It's purpose is to invoke the update_contract_state function on the sharding contract.
+# It takes one argument, which is the operation to perform.
+# The operations are:
+# - add: sums the diff value of the slot with the previous value
+# - lock_set: locks the slot and sets a new value for it
+# - set: sets a new value for the slot
+# - lock: locks the contract slots (locked slots are immutable)
+# It's used only for one slot "counter" in the contract.
+# Only one argument is needed, the operation to perform (add, lock_set, set, lock) 
+# and it will test these scenarios.
+
 SHARDING_CONTRACT_ADDRESS=$(cat sharding_contract_address.txt)
 TEST_CONTRACT_ADDRESS=$(cat test_contract_address.txt)
 
