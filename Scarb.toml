@@ -10,6 +10,7 @@ starknet = "2.9.2"
 openzeppelin = "0.20.0"
 openzeppelin_testing = "0.20.0"
 snforge_std = "0.34.0"
+cairo_lib = { git = "https://github.com/HerodotusDev/cairo-lib.git" }
 
 [dev-dependencies]
 snforge_std = "0.34.0"
