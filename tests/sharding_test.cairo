@@ -156,7 +156,6 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
 
 #[test]
 fn test_update_state() {
-    // Deploy the sharding contract
     let mut setup = setup();
 
     let expected_slot_value = 5;
@@ -164,13 +163,14 @@ fn test_update_state() {
         setup.test_contract_dispatcher.contract_address.into(),
         setup
             .test_contract_dispatcher
-            .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot(),
         expected_slot_value,
     );
+
     // Initialize the shard by connecting the test contract to the sharding system
     let mut setup = initialize_shard(
-        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -183,21 +183,23 @@ fn test_update_state() {
     );
     setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
 
-    //Counter is updated by snos_output
+    // Counter is updated by snos_output
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == expected_slot_value, "Counter is not set");
     println!("counter: {:?}", counter);
 
     // Verify that an unchanged storage slot remains at its default value
     let unchanged_slot = setup.test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
-
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     //TODO! we need to talk about silent consent to not update unsent slots
 
+    // Initialize again with SetLock type
     let mut setup = initialize_shard(
-        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
+
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
 
     let events = setup.test_spy.get_events();
     println!("events: {:?}", events);
@@ -306,24 +308,25 @@ fn test_update_state_with_set_operation() {
 fn test_multiple_crd_operations() {
     let mut setup = setup();
 
+    // Initialize the shard with SetLock operation type
     let mut setup = initialize_shard(
-        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Set initial counter value to 0
     setup.test_contract_dispatcher.set_counter(0);
 
-    // Create SNOS output
+    // Create SNOS output for SetLock operation
     let snos_output = get_state_update(
         setup.test_contract_dispatcher.contract_address.into(),
         setup
             .test_contract_dispatcher
-            .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot(),
         5,
     );
 
-    // Apply state update with Lock operation
+    // Apply state update with SetLock operation
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
@@ -333,7 +336,7 @@ fn test_multiple_crd_operations() {
     // Verify counter is 5 after update
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not set correctly after update");
-    println!("Counter after Lock operation: {:?}", counter);
+    println!("Counter after SetLock operation: {:?}", counter);
 
     // Initialize a new shard with Add operation type
     let mut setup = initialize_shard(
@@ -391,27 +394,27 @@ fn test_multiple_crd_operations() {
 }
 
 #[test]
-#[should_panic(expected: ('L: Sharding already initialized',))]
-fn test_lock_after_lock_fails() {
+#[should_panic(expected: ('SL:Sharding already initialized',))]
+fn test_setlock_after_setlock_fails() {
     let mut setup = setup();
 
-    // Initialize the shard with Lock operation type
+    // Initialize the shard with SetLock operation type
     snf::start_cheat_caller_address(
         setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
     let contract_slots_changes = setup
         .test_contract_dispatcher
-        .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())));
 
-    // First initialization with Lock
+    // First initialization with SetLock
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
             setup.shard_dispatcher.contract_address, array![contract_slots_changes].span(),
         );
 
-    // Second initialization with Lock - should fail
+    // Second initialization with SetLock - should fail
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
@@ -420,8 +423,8 @@ fn test_lock_after_lock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('L: Sharding already initialized',))]
-fn test_lock_after_add_fails() {
+#[should_panic(expected: ('SL:Sharding already initialized',))]
+fn test_setlock_after_add_fails() {
     let mut setup = setup();
 
     // Initialize the shard with Add operation type
@@ -439,10 +442,10 @@ fn test_lock_after_add_fails() {
             setup.shard_dispatcher.contract_address, array![add_slots_changes].span(),
         );
 
-    // Second initialization with Lock - should fail
+    // Second initialization with SetLock - should fail
     let lock_slots_changes = setup
         .test_contract_dispatcher
-        .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())));
     setup
         .test_contract_component_dispatcher
         .initialize_shard(
@@ -451,8 +454,8 @@ fn test_lock_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('L: Sharding already initialized',))]
-fn test_lock_after_set_fails() {
+#[should_panic(expected: ('S: Sharding already initialized',))]
+fn test_set_after_setlock_fails() {
     let mut setup = setup();
 
     // Initialize the shard with Set operation type
@@ -460,7 +463,17 @@ fn test_lock_after_set_fails() {
         setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-    // First initialization with Set
+    // First initialization with SetLock - should fail
+    let lock_slots_changes = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())));
+    setup
+        .test_contract_component_dispatcher
+        .initialize_shard(
+            setup.shard_dispatcher.contract_address, array![lock_slots_changes].span(),
+        );
+
+    // Second initialization with Set
     let set_slots_changes = setup
         .test_contract_dispatcher
         .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())));
@@ -468,16 +481,6 @@ fn test_lock_after_set_fails() {
         .test_contract_component_dispatcher
         .initialize_shard(
             setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
-        );
-
-    // Second initialization with Lock - should fail
-    let lock_slots_changes = setup
-        .test_contract_dispatcher
-        .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
-    setup
-        .test_contract_component_dispatcher
-        .initialize_shard(
-            setup.shard_dispatcher.contract_address, array![lock_slots_changes].span(),
         );
 }
 
@@ -513,8 +516,7 @@ fn test_set_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('A: Sharding already initialized',))]
-fn test_add_after_set_fails() {
+fn test_add_after_set() {
     let mut setup = setup();
 
     // Initialize the shard with Set operation type
@@ -612,14 +614,14 @@ fn test_two_times_set() {
     println!("All valid CRD combinations passed");
 }
 
-
+#[should_panic(expected: ('Component: Storage is unlocked',))]
 #[test]
-fn test_too_many_lock_updates_empty_event() {
+fn test_too_many_setlock_updates() {
     let mut setup = setup();
 
-    // Initialize the shard with Lock operation type
+    // Initialize the shard with SetLock operation type
     let mut setup = initialize_shard(
-        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Create SNOS output
@@ -627,7 +629,7 @@ fn test_too_many_lock_updates_empty_event() {
         setup.test_contract_dispatcher.contract_address.into(),
         setup
             .test_contract_dispatcher
-            .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot(),
         5,
     );
@@ -647,7 +649,7 @@ fn test_too_many_lock_updates_empty_event() {
                 setup
                     .test_contract_dispatcher
                     .get_storage_slots(
-                        CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+                        CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
                     )
                     .slot(),
                 5,
@@ -673,27 +675,11 @@ fn test_too_many_lock_updates_empty_event() {
     // Second update_state - should fail because the slot is already unlocked
     // This simulates trying to update more times than the init_count
     setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
-
-    let expected_empty_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 1,
-        slots_to_change: array![],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
-                ),
-            ],
-        );
 }
 
+#[should_panic(expected: ('Component: Storage is unlocked',))]
 #[test]
-fn test_too_many_add_updates_empty_event() {
+fn test_too_many_add_updates() {
     let mut setup = setup();
 
     // Initialize the shard with Add operation type
@@ -749,23 +735,6 @@ fn test_too_many_add_updates_empty_event() {
     // Second update_state - should fail because the slot is already unlocked
     // This simulates trying to update more times than the init_count
     setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
-
-    let expected_empty_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 1,
-        slots_to_change: array![],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
-                ),
-            ],
-        );
 }
 
 #[test]
@@ -871,26 +840,6 @@ fn test_two_times_init_add_and_two_updates() {
                 ),
             ],
         );
-
-    // Third update_state - should return empty event
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
-
-    let expected_empty_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 2,
-        slots_to_change: array![],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_empty_event),
-                ),
-            ],
-        );
 }
 
 
@@ -902,10 +851,10 @@ fn test_multiple_initializations_and_updates() {
         setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
     );
 
-    // Initialize the shard multiple times with Lock operation type
+    // Initialize the shard multiple times with SetLock operation type
     let contract_slots_changes = setup
         .test_contract_dispatcher
-        .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())));
 
     // First initialization
     setup
@@ -919,7 +868,7 @@ fn test_multiple_initializations_and_updates() {
         setup.test_contract_dispatcher.contract_address.into(),
         setup
             .test_contract_dispatcher
-            .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot(),
         5,
     );
@@ -964,4 +913,104 @@ fn test_multiple_initializations_and_updates() {
     assert!(counter == 5, "Counter is not updated correctly after third update");
 
     println!("Multiple initializations and updates completed successfully");
+}
+
+#[test]
+fn lock_and_unlock_storage() {
+    let mut setup = setup();
+
+    let expected_slot_value = 5;
+    let snos_output = get_state_update(
+        setup.test_contract_dispatcher.contract_address.into(),
+        setup
+            .test_contract_dispatcher
+            .get_storage_slots(CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .slot(),
+        expected_slot_value,
+    );
+
+    // Initialize the shard by connecting the test contract to the sharding system
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 0, "Counter is not set");
+
+    // Apply the state update to the sharding system with shard ID 1
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+
+    // Counter is NOT updated by snos_output because it's locked
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 0, "Counter is not set");
+
+    //TODO! we need to talk about silent consent to not update Locked slots
+
+    // Initialize again with Lock type
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+}
+
+#[test]
+fn unlocking_lock_when_no_update() {
+    let mut setup = setup();
+
+    let expected_slot_value = 5;
+
+    //We send set slots to the shard
+    let snos_output = get_state_update(
+        setup.test_contract_dispatcher.contract_address.into(),
+        setup
+            .test_contract_dispatcher
+            .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
+            .slot(),
+        expected_slot_value,
+    );
+
+    // Initialize the shard with Lock type
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 0, "Counter is not set");
+
+    // Apply the state update to the sharding system with shard ID 1
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+
+    // Counter is NOT updated by snos_output because set was sent
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 0, "Counter is not set");
+
+    // Initialize again with Lock type it should work despite Lock slots were not updated
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+}
+
+#[should_panic(expected: ('L: Sharding already initialized',))]
+#[test]
+fn two_times_lock() {
+    let mut setup = setup();
+
+    // Initialize the shard by connecting the test contract to the sharding system
+    let mut setup = initialize_shard(
+        setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    // Initialize again with Lock type
+    initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
 }

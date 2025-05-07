@@ -7,12 +7,19 @@ case $1 in
     "add")
     SHARD_ID="0 0 0"
     ;;
-    "lock")
+    "lock_set")
     SHARD_ID="1 0 0"
     ;;
     "set")
     SHARD_ID="2 0 0"
     ;;
+    "lock")
+    SHARD_ID="3 0 0"
+    ;;
+    *)  
+    echo "Error: Invalid operation. Use 'add', 'lock_set', 'set', or 'lock'."  
+    exit 1  
+    ;; 
 esac
 
 echo "Calling get_storage_slots to get slot information..."
