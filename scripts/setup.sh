@@ -5,7 +5,7 @@ declare_contract() {
   local contract_name=$1
   local class_hash_file=$2
 
-  echo "Declaring $contract_name contrac+t..."
+  echo "Declaring $contract_name contract..."
   output=$(sncast declare \
     --contract-name $contract_name \
     --url http://localhost:5050/ \
