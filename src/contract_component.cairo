@@ -1,5 +1,5 @@
 use starknet::{ContractAddress};
-
+use core::poseidon::poseidon_hash_span;
 #[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
     Add: (ContractAddress, slot_key),
@@ -17,6 +17,7 @@ pub trait CRDTypeTrait {
     fn contract_address(self: CRDType) -> ContractAddress;
     fn slot_key(self: CRDType) -> slot_key;
     fn to_felt(self: CRDType) -> felt252;
+    fn to_hash(self: CRDType) -> felt252;
 }
 
 impl CRDTypeImpl of CRDTypeTrait {
@@ -56,6 +57,13 @@ impl CRDTypeImpl of CRDTypeTrait {
             CRDType::Lock(_) => 4,
         }
     }
+
+    fn to_hash(self: CRDType) -> felt252 {
+        let mut hash_input = ArrayTrait::new();
+        hash_input.append(self.slot_key());
+        hash_input.append(self.to_felt());
+        poseidon_hash_span(hash_input.span())
+    }
 }
 
 #[starknet::interface]
@@ -89,10 +97,11 @@ pub mod contract_component {
     use super::CRDTypeTrait;
     use super::slot_key;
     use core::array::ArrayTrait;
-    use core::poseidon::{poseidon_hash_span, PoseidonImpl};
+    use core::poseidon::{PoseidonImpl};
     use core::pedersen::PedersenImpl;
     use cairo_lib::hashing::poseidon::PoseidonHasher;
-    use cairo_lib::data_structures::mmr::mmr::MMRTrait;
+    use sharding_tests::shard_output::merkle_tree_hash;
+    use sharding_tests::shard_output::is_power_of_two;
 
     type init_count = felt252;
     type index = felt252;
@@ -129,6 +138,7 @@ pub mod contract_component {
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
         pub const WRONG_MERKLE_ROOT: felt252 = 'Component: Wrong merkle root';
         pub const SLOTS_NOT_ORDERED: felt252 = 'Component:Slots must be ASC ord';
+        pub const WRONG_MERKLE_LEAVES_LENGTH: felt252 = 'Component: len is no power of 2';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -156,18 +166,16 @@ pub mod contract_component {
 
                 self.slots.write(crd_type.slot_key(), (crd_type, init_count + 1));
 
-                // Calculate hash of slot and CRDType variant
-                let mut hash_input = ArrayTrait::new();
-                hash_input.append(crd_type.slot_key());
-                hash_input.append(crd_type.to_felt());
-                let hash = poseidon_hash_span(hash_input.span());
+                let hash = crd_type.to_hash();
                 merkle_leaves.append(hash);
 
                 println!("Processed slot: {:?}", crd_type);
             };
 
+            assert(is_power_of_two(merkle_leaves.len()), Errors::WRONG_MERKLE_LEAVES_LENGTH);
             // Calculate Merkle root
-            let merkle_root = self.calculate_merkle_root(merkle_leaves.clone());
+            let merkle_root = merkle_tree_hash(merkle_leaves.span());
+
             println!("Calculated Merkle root: {:?}", merkle_root);
 
             // Store merkle root
@@ -285,20 +293,9 @@ pub mod contract_component {
             };
             self.emit(ContractComponentUpdated { storage_changes });
         }
-
-        fn calculate_merkle_root(
-            ref self: ComponentState<TContractState>, mut leaves: Array<felt252>,
-        ) -> felt252 {
-            let mut mmr = MMRTrait::new(PoseidonHasher::hash_double(0, 0), 0);
-            let mut peaks = ArrayTrait::new().span();
-
-            for leaf in leaves.span() {
-                match mmr.append(*leaf, peaks) {
-                    Result::Ok((_, new_peaks)) => { peaks = new_peaks; },
-                    Result::Err(err) => { panic!("Error: {:?}", err); },
-                }
-            };
-            mmr.root
-        }
     }
 }
+
+
+// 2649474030668195785538290056906299475492330087625850069759111787898344758731 calculated by contract 
+// 2611241984270070773722881910985857199709726267080743225046270984252313117573 calculated by shard

@@ -90,6 +90,7 @@ pub mod sharding {
             assert(
                 program_output_struct.state_diff.span().len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
             );
+            let mut merkle_root = program_output_struct.merkle_root;
             for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
@@ -109,8 +110,8 @@ pub mod sharding {
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
-                    println!("Updating shard state with merkle root: {:?}", *contract.merkle_root);
-                    contract_dispatcher.update_shard_state(storage_changes, *contract.merkle_root);
+                    println!("Updating shard state with merkle root: {:?}", merkle_root);
+                    contract_dispatcher.update_shard_state(storage_changes, merkle_root);
                 }
             }
         }
