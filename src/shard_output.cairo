@@ -1,4 +1,5 @@
 use core::array::Array;
+use core::poseidon::poseidon_hash_span;
 
 #[derive(Drop, Clone, PartialEq, Serde)]
 pub struct ContractChanges {
@@ -14,5 +15,24 @@ pub struct ContractChanges {
 
 #[derive(Drop, Clone, PartialEq, Serde)]
 pub struct ShardOutput {
+    pub merkle_root: felt252,
     pub state_diff: Array<ContractChanges>,
+}
+
+pub fn merkle_tree_hash(array: Span<felt252>) -> felt252 {
+    let length = array.len();
+    if length == 1 {
+        return array[0].clone();
+    }
+    poseidon_hash_span(
+        [
+            merkle_tree_hash(array.slice(0, length / 2)),
+            merkle_tree_hash(array.slice(length / 2, length / 2)),
+        ]
+            .span(),
+    )
+}
+
+pub fn is_power_of_two(n: usize) -> bool {
+    n != 0 && (n & (n - 1)) == 0
 }

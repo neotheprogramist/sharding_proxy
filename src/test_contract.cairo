@@ -71,7 +71,6 @@ pub mod test_contract {
     #[derive(Drop, starknet::Event)]
     pub struct GameFinished {
         pub caller: ContractAddress,
-        pub shard_id: felt252,
     }
 
     pub mod Errors {
@@ -91,9 +90,8 @@ pub mod test_contract {
             let caller = get_caller_address();
             self.emit(Increment { caller });
 
-            let shard_id = self.contract_component.get_shard_id(get_contract_address());
             if self.counter.read() == 3 {
-                self.emit(GameFinished { caller, shard_id });
+                self.emit(GameFinished { caller });
             }
         }
 
