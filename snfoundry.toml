@@ -2,6 +2,11 @@
 # and https://foundry-rs.github.io/starknet-foundry/projects/configuration.html for more information
 
 [sncast.default]
-account = "mainuser"
+account = "account-1"
 accounts-file = "./account-file.json"
-url = "http://localhost:5050/"
+url = "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/H3BmmFuOaYNEtpwkiuGsFMj-7wl3bTJq"
+
+[sncast.katana]
+account = "account-1"
+accounts-file = "./account-file.json"
+url = "http://localhost:5050"

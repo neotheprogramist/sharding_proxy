@@ -33,7 +33,7 @@ pub mod sharding {
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
     use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
-    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use sharding_tests::contract_component::CRDType;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
@@ -120,7 +120,7 @@ pub mod sharding {
                     let contract_shard_id = self.shard_id.read(contract_address);
                     assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
                     assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
-                    println!("Processing contract: {:?}", contract_address);
+                    //println!("Processing contract: {:?}", contract_address);
 
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {

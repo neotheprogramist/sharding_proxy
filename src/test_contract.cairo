@@ -20,7 +20,7 @@ pub mod test_contract {
         OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
     };
     use starknet::{ContractAddress, get_contract_address};
-    use core::starknet::SyscallResultTrait;
+    use starknet::SyscallResultTrait;
     use super::ITestContract;
     use sharding_tests::contract_component::contract_component;
     use sharding_tests::contract_component::CRDType;
@@ -112,12 +112,12 @@ pub mod test_contract {
 
         fn get_storage_slots(ref self: ContractState, crd_type: CRDType) -> CRDType {
             match crd_type {
-                CRDType::Add => CRDType::Add((get_contract_address(), selector!("counter"))),
-                CRDType::SetLock => CRDType::SetLock(
+                CRDType::Add(_) => CRDType::Add((get_contract_address(), selector!("counter"))),
+                CRDType::SetLock(_) => CRDType::SetLock(
                     (get_contract_address(), selector!("counter")),
                 ),
-                CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
-                CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
+                CRDType::Set(_) => CRDType::Set((get_contract_address(), selector!("counter"))),
+                CRDType::Lock(_) => CRDType::Lock((get_contract_address(), selector!("counter"))),
             }
         }
     }
