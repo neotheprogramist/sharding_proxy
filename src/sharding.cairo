@@ -28,14 +28,14 @@ pub mod sharding {
         get_caller_address, ContractAddress,
         storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
     };
-    use sharding_tests::shard_output::{deserialize_os_output};
+    use sharding_tests::shard_output::{StarknetOsOutput, deserialize_os_output};
     use super::ISharding;
     use sharding_tests::contract_component::IContractComponentDispatcher;
     use sharding_tests::contract_component::IContractComponentDispatcherTrait;
     use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
-    use starknet::storage::{StoragePointerWriteAccess};
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use sharding_tests::contract_component::CRDType;
-    use crate::contract_component::CRDTypeTrait;
+
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(path: config_cpt, storage: config, event: ConfigEvent);
 
@@ -47,7 +47,7 @@ pub mod sharding {
     #[storage]
     struct Storage {
         initializer_contract_address: ContractAddress,
-        shard_id: Map<ContractAddress, (shard_id, CRDType)>,
+        shard_id: Map<ContractAddress, shard_id>,
         owner: ContractAddress,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
@@ -90,9 +90,9 @@ pub mod sharding {
             self.config.assert_only_owner_or_operator();
 
             let caller = get_caller_address();
-            let (current_shard_id, _) = self.shard_id.read(caller);
+            let current_shard_id = self.shard_id.read(caller);
             let new_shard_id = current_shard_id + 1;
-            self.shard_id.write(caller, (new_shard_id, *storage_slots[0]));
+            self.shard_id.write(caller, new_shard_id);
             self.initializer_contract_address.write(caller);
 
             self
@@ -105,33 +105,30 @@ pub mod sharding {
             ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252,
         ) {
             self.config.assert_only_owner_or_operator();
-            let mut snos_output = snos_output;
-            let mut input_iter = snos_output.into_iter();
-            let program_output_struct = deserialize_os_output(ref input_iter);
-            assert(program_output_struct.state_diff.len() != 0, Errors::NO_CONTRACTS_SUBMITTED,);
-            let caller = get_caller_address();
-            let (caller_shard_id, caller_crd_type) = self.shard_id.read(caller);
-            let contract_address = caller_crd_type.contract_address();
-            for contract in program_output_struct
-                .state_diff {
-                    let contract_add = *contract.address;
-                    if contract_add != contract_address {
-                        continue;
-                    }
-                    assert(caller_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-                    assert(caller_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+            let mut snos_output = snos_output.into_iter();
+            let program_output_struct: StarknetOsOutput = deserialize_os_output(ref snos_output);
+
+            assert(
+                program_output_struct.state_diff.len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
+            );
+            for contract in program_output_struct.state_diff {
+                let contract_address: ContractAddress = (*contract.address)
+                    .try_into()
+                    .expect('Invalid contract address');
+
+                if self.initializer_contract_address.read() == contract_address {
+                    let contract_shard_id = self.shard_id.read(contract_address);
+                    assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+                    assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+                    println!("Processing contract: {:?}", contract_address);
 
                     let mut storage_changes = ArrayTrait::new();
-                    for storage_change in contract
-                        .storage_changes {
-                            if *storage_change.key != caller_crd_type.slot(){
-                                continue;
-                            }
-                            let full_storage_update = storage_change;
-                            let storage_key = *full_storage_update.key;
-                            let storage_value = *full_storage_update.new_value;
-                            storage_changes.append((storage_key, storage_value));
-                        };
+                    for storage_change in contract.storage_changes {
+                        let storage_key = *storage_change.key;
+                        let storage_value = *storage_change.new_value;
+
+                        storage_changes.append((storage_key, storage_value));
+                    };
                     assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
 
                     let contract_dispatcher = IContractComponentDispatcher {
@@ -139,10 +136,11 @@ pub mod sharding {
                     };
                     contract_dispatcher.update_shard_state(storage_changes, shard_id);
                 }
+            }
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
-            let (shard_id, _) = self.shard_id.read(contract_address);
+            let shard_id = self.shard_id.read(contract_address);
             assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
             shard_id
         }

@@ -241,163 +241,124 @@ mod tests {
     #[test]
     fn test_deserialize_os_output_with_messages() {
         let mut input = array![
-               0x564bd22008db5d8ee010398e1769cf53b155d5418759a3daf9748223810fa1f,
-    0x6d8c571961b70f66500f203c2867c1b7a89d991b3e12a15e2d617c73349d249,
-    0x3ed1c6,
-    0x3ed1c9,
-    0x7d0ff4a6fc38a9eecb7afb74e9f19807946e1c113b988f7188587ba0b449874,
-    0x490cbfe4cfa9f214c77a054d34a40bd5b45333aeb7aa559ae2db0031a322a26,
-    0x0,
-    0x1b9900f77ff5923183a7795fcfbb54ed76917bc1ddd4160cc77fa96e36cf8c5,
-    0x0,
-    0x1,
-    0x0,
-    0x0,
-    0x4,
-    0x1,
-    0x0,
-    0x0,
-    0x0,
-    0x0,
-    0x3,
-    0x3ed1bd,
-    0x0,
-    0x1ce9a92f1e2c5492481b4d10cc9386029c24af6b3d095d4ba1bbb8adb74fa62,
-    0x3ed1be,
-    0x0,
-    0x34c99055fee7ac422b25d8522bd7d08d6f787e99b7198fb8d90650d1add3e58,
-    0x3ed1bf,
-    0x0,
-    0x4e9a9c6f68f04f1eed27d1be22c010172ffebe6b157c90b865ce36e5161b8fb,
-    0x446e80025dde50edb5b0735727c3de66e65947734a7893bcf6a05c8dc0b345a,
-    0x0,
-    0x0,
-    0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
-    0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
-    0x1,
-    0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854,
-    0x0,
-    0x3,
-    0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d,
-    0x0,
-    0x0,
-    0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
-    0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
-    0x2,
-    0x3968b99888bd99c0284e1af8e55f2175d0737f540e8d6440d83add8e869e4c4,
-    0x51d08b42e76b465ee,
-    0x51c402f2791baadee,
-    0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a,
-    0x2a13c459d6e6f09d0e598,
-    0x2a13c4665f375eeca9d98,
-    0x69a4f598b14f8424f2ee90b7a55fbc6083635da13f96a35acae04e6c149798d,
-    0x672,
-    0x675,
-    0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
-    0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
-    0x0,
-    0x0,
+            0x564bd22008db5d8ee010398e1769cf53b155d5418759a3daf9748223810fa1f,
+            0x6d8c571961b70f66500f203c2867c1b7a89d991b3e12a15e2d617c73349d249, 0x3ed1c6, 0x3ed1c9,
+            0x7d0ff4a6fc38a9eecb7afb74e9f19807946e1c113b988f7188587ba0b449874,
+            0x490cbfe4cfa9f214c77a054d34a40bd5b45333aeb7aa559ae2db0031a322a26, 0x0,
+            0x1b9900f77ff5923183a7795fcfbb54ed76917bc1ddd4160cc77fa96e36cf8c5, 0x0, 0x1, 0x0, 0x0,
+            0x4, 0x1, 0x0, 0x0, 0x0, 0x0, 0x3, 0x3ed1bd, 0x0,
+            0x1ce9a92f1e2c5492481b4d10cc9386029c24af6b3d095d4ba1bbb8adb74fa62, 0x3ed1be, 0x0,
+            0x34c99055fee7ac422b25d8522bd7d08d6f787e99b7198fb8d90650d1add3e58, 0x3ed1bf, 0x0,
+            0x4e9a9c6f68f04f1eed27d1be22c010172ffebe6b157c90b865ce36e5161b8fb,
+            0x446e80025dde50edb5b0735727c3de66e65947734a7893bcf6a05c8dc0b345a, 0x0, 0x0,
+            0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
+            0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565, 0x1,
+            0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854, 0x0, 0x3,
+            0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d, 0x0, 0x0,
+            0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
+            0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f, 0x2,
+            0x3968b99888bd99c0284e1af8e55f2175d0737f540e8d6440d83add8e869e4c4, 0x51d08b42e76b465ee,
+            0x51c402f2791baadee, 0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a,
+            0x2a13c459d6e6f09d0e598, 0x2a13c4665f375eeca9d98,
+            0x69a4f598b14f8424f2ee90b7a55fbc6083635da13f96a35acae04e6c149798d, 0x672, 0x675,
+            0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
+            0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f, 0x0, 0x0,
         ];
 
         let mut input_iter = input.span().into_iter();
         let os_output = deserialize_os_output(ref input_iter);
 
         let expected = StarknetOsOutput {
-    initial_root: 0x564bd22008db5d8ee010398e1769cf53b155d5418759a3daf9748223810fa1f,
-    final_root: 0x6d8c571961b70f66500f203c2867c1b7a89d991b3e12a15e2d617c73349d249,
-    prev_block_number: 4116934,
-    new_block_number: 4116937,
-    prev_block_hash: 0x7d0ff4a6fc38a9eecb7afb74e9f19807946e1c113b988f7188587ba0b449874,
-    new_block_hash: 0x10ba4a4e85f487605d7db8f2ea8b57ea772e21e30e681839caebafd8fbfb11e,
-    os_program_hash: 0x0,
-    starknet_os_config_hash: 0x1b9900f77ff5923183a7795fcfbb54ed76917bc1ddd4160cc77fa96e36cf8c5,
-    use_kzg_da: os_output.use_kzg_da,
-    full_output: os_output.full_output,
-    messages_to_l1: array![].span(),
-    messages_to_l2: array![].span(),
-    state_diff: array![
-        FullContractChanges {
-            address: 0x1.try_into().unwrap(),
-            prev_nonce: 0x0,
-            new_nonce: 0x0,
-            prev_class_hash: 0x0,
-            new_class_hash: 0x0,
-            storage_changes: array![
-                FullContractStorageUpdate {
-                    key: 0x3ed1bd,
-                    prev_value: 0x0,
-                    new_value: 0x1ce9a92f1e2c5492481b4d10cc9386029c24af6b3d095d4ba1bbb8adb74fa62,
+            initial_root: 0x564bd22008db5d8ee010398e1769cf53b155d5418759a3daf9748223810fa1f,
+            final_root: 0x6d8c571961b70f66500f203c2867c1b7a89d991b3e12a15e2d617c73349d249,
+            prev_block_number: 4116934,
+            new_block_number: 4116937,
+            prev_block_hash: 0x7d0ff4a6fc38a9eecb7afb74e9f19807946e1c113b988f7188587ba0b449874,
+            new_block_hash: 0x10ba4a4e85f487605d7db8f2ea8b57ea772e21e30e681839caebafd8fbfb11e,
+            os_program_hash: 0x0,
+            starknet_os_config_hash: 0x1b9900f77ff5923183a7795fcfbb54ed76917bc1ddd4160cc77fa96e36cf8c5,
+            use_kzg_da: os_output.use_kzg_da,
+            full_output: os_output.full_output,
+            messages_to_l1: array![].span(),
+            messages_to_l2: array![].span(),
+            state_diff: array![
+                FullContractChanges {
+                    address: 0x1.try_into().unwrap(),
+                    prev_nonce: 0x0,
+                    new_nonce: 0x0,
+                    prev_class_hash: 0x0,
+                    new_class_hash: 0x0,
+                    storage_changes: array![
+                        FullContractStorageUpdate {
+                            key: 0x3ed1bd,
+                            prev_value: 0x0,
+                            new_value: 0x1ce9a92f1e2c5492481b4d10cc9386029c24af6b3d095d4ba1bbb8adb74fa62,
+                        },
+                        FullContractStorageUpdate {
+                            key: 0x3ed1be,
+                            prev_value: 0x0,
+                            new_value: 0x34c99055fee7ac422b25d8522bd7d08d6f787e99b7198fb8d90650d1add3e58,
+                        },
+                        FullContractStorageUpdate {
+                            key: 0x3ed1bf,
+                            prev_value: 0x0,
+                            new_value: 0x4e9a9c6f68f04f1eed27d1be22c010172ffebe6b157c90b865ce36e5161b8fb,
+                        },
+                    ]
+                        .span(),
                 },
-                FullContractStorageUpdate {
-                    key: 0x3ed1be,
-                    prev_value: 0x0,
-                    new_value: 0x34c99055fee7ac422b25d8522bd7d08d6f787e99b7198fb8d90650d1add3e58,
+                FullContractChanges {
+                    address: 0x446e80025dde50edb5b0735727c3de66e65947734a7893bcf6a05c8dc0b345a
+                        .try_into()
+                        .unwrap(),
+                    prev_nonce: 0x0,
+                    new_nonce: 0x0,
+                    prev_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
+                    new_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
+                    storage_changes: array![
+                        FullContractStorageUpdate {
+                            key: 0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854,
+                            prev_value: 0x0,
+                            new_value: 0x3,
+                        },
+                    ]
+                        .span(),
                 },
-                FullContractStorageUpdate {
-                    key: 0x3ed1bf,
-                    prev_value: 0x0,
-                    new_value: 0x4e9a9c6f68f04f1eed27d1be22c010172ffebe6b157c90b865ce36e5161b8fb,
+                FullContractChanges {
+                    address: 0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
+                        .try_into()
+                        .unwrap(),
+                    prev_nonce: 0x0,
+                    new_nonce: 0x0,
+                    prev_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
+                    new_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
+                    storage_changes: array![
+                        FullContractStorageUpdate {
+                            key: 0x3968b99888bd99c0284e1af8e55f2175d0737f540e8d6440d83add8e869e4c4,
+                            prev_value: 0x51d08b42e76b465ee,
+                            new_value: 0x51c402f2791baadee,
+                        },
+                        FullContractStorageUpdate {
+                            key: 0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a,
+                            prev_value: 0x2a13c459d6e6f09d0e598,
+                            new_value: 0x2a13c4665f375eeca9d98,
+                        },
+                    ]
+                        .span(),
+                },
+                FullContractChanges {
+                    address: 0x69a4f598b14f8424f2ee90b7a55fbc6083635da13f96a35acae04e6c149798d
+                        .try_into()
+                        .unwrap(),
+                    prev_nonce: 0x672,
+                    new_nonce: 0x675,
+                    prev_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
+                    new_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
+                    storage_changes: array![].span(),
                 },
             ]
-            .span(),
-        },
-        FullContractChanges {
-            address: 0x446e80025dde50edb5b0735727c3de66e65947734a7893bcf6a05c8dc0b345a
-                .try_into()
-                .unwrap(),
-            prev_nonce: 0x0,
-            new_nonce: 0x0,
-            prev_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
-            new_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
-            storage_changes: array![
-                FullContractStorageUpdate {
-                    key: 0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854,
-                    prev_value: 0x0,
-                    new_value: 0x3,
-                },
-            ]
-            .span(),
-        },
-        FullContractChanges {
-            address: 0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
-                .try_into()
-                .unwrap(),
-            prev_nonce: 0x0,
-            new_nonce: 0x0,
-            prev_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
-            new_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
-            storage_changes: array![
-                FullContractStorageUpdate {
-                    key: 0x3968b99888bd99c0284e1af8e55f2175d0737f540e8d6440d83add8e869e4c4,
-                    prev_value: 0x51d08b42e76b465ee,
-                    new_value: 0x51c402f2791baadee,
-                },
-                FullContractStorageUpdate {
-                    key: 0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a,
-                    prev_value: 0x2a13c459d6e6f09d0e598,
-                    new_value: 0x2a13c4665f375eeca9d98,
-                },
-            ]
-            .span(),
-        },
-        FullContractChanges {
-            address: 0x69a4f598b14f8424f2ee90b7a55fbc6083635da13f96a35acae04e6c149798d
-                .try_into()
-                .unwrap(),
-            prev_nonce: 0x672,
-            new_nonce: 0x675,
-            prev_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
-            new_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
-            storage_changes: array![].span(),
-        },
-    ]
-    .span(),
-};
-        assert_eq!(
-            os_output.state_diff,
-            expected.state_diff
-            
-        );
-
+                .span(),
+        };
+        assert_eq!(os_output.state_diff, expected.state_diff);
     }
 }

@@ -1,31 +1,25 @@
-use snforge_std::EventSpyTrait;
-use core::traits::Into;
-use core::result::ResultTrait;
 use core::poseidon::PoseidonImpl;
+use core::result::ResultTrait;
+use core::traits::Into;
 use openzeppelin_testing::constants as c;
-use snforge_std as snf;
-use starknet::ContractAddress;
-use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
-use sharding_tests::sharding::IShardingDispatcher;
-use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
-
-use sharding_tests::contract_component::IContractComponentDispatcher;
-use sharding_tests::contract_component::IContractComponentDispatcherTrait;
+use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
 use sharding_tests::contract_component::contract_component::{
-    Event as ContractComponentEvent, ContractSlotUpdated,
+    ContractSlotUpdated, Event as ContractComponentEvent,
 };
-
-use sharding_tests::config::IConfigDispatcher;
-use sharding_tests::config::IConfigDispatcherTrait;
-
-use sharding_tests::test_contract::ITestContractDispatcher;
-use sharding_tests::test_contract::ITestContractDispatcherTrait;
+use sharding_tests::contract_component::{
+    CRDType, CRDTypeTrait, IContractComponentDispatcher, IContractComponentDispatcherTrait,
+};
+use sharding_tests::shard_output::{
+    FullContractChanges, FullContractStorageUpdate, StarknetOsOutput,
+    deserialize_os_output,
+};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
-use sharding_tests::shard_output::{ShardOutput, ContractChanges};
-
-use sharding_tests::contract_component::CRDType;
-use sharding_tests::contract_component::CRDTypeTrait;
+use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
+use snforge_std as snf;
+use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait, EventSpyTrait};
+use starknet::ContractAddress;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
@@ -58,9 +52,7 @@ fn setup() -> TestSetup {
     };
 
     // Register the test contract as an operator
-    snf::start_cheat_caller_address(
-        sharding_contract_config_dispatcher.contract_address, c::OWNER,
-    );
+    snf::start_cheat_caller_address(sharding_contract_config_dispatcher.contract_address, c::OWNER);
     sharding_contract_config_dispatcher
         .register_operator(test_contract_component_dispatcher.contract_address);
     snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
@@ -81,7 +73,7 @@ fn deploy_contract_with_owner(
     let contract = match snf::declare(contract_name).unwrap() {
         snf::DeclareResult::Success(contract) => contract,
         _ => core::panic_with_felt252('AlreadyDeclared not expected'),
-    };          
+    };
     let calldata = array![owner];
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
@@ -92,30 +84,61 @@ fn deploy_contract_with_owner(
 fn get_state_update(
     test_contract_address: felt252, storage_slot: felt252, storage_value: felt252,
 ) -> Array<felt252> {
-    let mut shard_output = ShardOutput {
+    let mut shard_output = StarknetOsOutput {
+        initial_root: 'root',
+        final_root: 'final_root',
+        prev_block_number: 'prev_block',
+        new_block_number: 'new_block',
+        prev_block_hash: 'prev_block_hash',
+        new_block_hash: 'new_block_hash',
+        os_program_hash: 0x0,
+        use_kzg_da: 0x0,
+        full_output: 0x1,
+        messages_to_l1: array![].span(),
+        messages_to_l2: array![].span(),
+        starknet_os_config_hash: 'config',
         state_diff: array![
-            ContractChanges {
-                addr: test_contract_address,
-                nonce: 0,
-                class_hash: Option::None,
-                storage_changes: array![(storage_slot, storage_value)],
+            FullContractChanges {
+                address: test_contract_address.try_into().unwrap(),
+                prev_nonce: 0,
+                new_nonce: 0,
+                prev_class_hash: 0,
+                new_class_hash: 0,
+                storage_changes: array![
+                    FullContractStorageUpdate {
+                        key: storage_slot, prev_value: 0x0, new_value: storage_value,
+                    },
+                ]
+                    .span(),
             },
             // Not locked slot, should not be updated, so we add it this dummy value to the state
             // diff to verify that it is not updated
-            ContractChanges {
-                addr: test_contract_address,
-                nonce: 0,
-                class_hash: Option::None,
-                storage_changes: array![(NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE)],
+            FullContractChanges {
+                address: test_contract_address.try_into().unwrap(),
+                prev_nonce: 0,
+                new_nonce: 0,
+                prev_class_hash: 0,
+                new_class_hash: 0,
+                storage_changes: array![
+                    FullContractStorageUpdate {
+                        key: NOT_LOCKED_SLOT_ADDRESS,
+                        prev_value: 0x0,
+                        new_value: NOT_LOCKED_SLOT_VALUE,
+                    },
+                ]
+                    .span(),
             },
-        ],
+        ]
+            .span(),
     };
+    println!("{:?}",shard_output);
     let mut snos_output = array![];
     shard_output.serialize(ref snos_output);
-    //println!("snos_output: {:?}", snos_output);
+    let mut x = snos_output.span().into_iter();
+    let os_output = deserialize_os_output(ref x);
+    assert_eq!(os_output,shard_output, "difference in serialization/deserialization");
     snos_output
 }
-
 
 fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
     snf::start_cheat_caller_address(
@@ -189,7 +212,8 @@ fn test_update_state() {
     //println!("counter: {:?}", counter);
 
     // Verify that an unchanged storage slot remains at its default value
-    let unchanged_slot = setup.test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
+    let unchanged_slot =
+    setup.test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
     //TODO! we need to talk about silent consent to not update unsent slots
@@ -203,6 +227,142 @@ fn test_update_state() {
 
     let events = setup.test_spy.get_events();
     //println!("events: {:?}", events);
+}
+fn get_state_update_real_like(
+    target_contract_address: felt252,
+    target_key: felt252,
+    target_value: felt252,
+) -> Array<felt252> {
+    let shard_output = StarknetOsOutput {
+        initial_root: 0x564bd22008db5d8ee010398e1769cf53b155d5418759a3daf9748223810fa1f,
+        final_root: 0x6d8c571961b70f66500f203c2867c1b7a89d991b3e12a15e2d617c73349d249,
+        prev_block_number: 4116934,
+        new_block_number: 4116937,
+        prev_block_hash: 0x7d0ff4a6fc38a9eecb7afb74e9f19807946e1c113b988f7188587ba0b449874,
+        new_block_hash: 0x10ba4a4e85f487605d7db8f2ea8b57ea772e21e30e681839caebafd8fbfb11e,
+        os_program_hash: 0x0,
+        use_kzg_da: 0x0,
+        full_output: 0x1,
+        messages_to_l1: array![].span(),
+        messages_to_l2: array![].span(),
+        starknet_os_config_hash: 0x1b9900f77ff5923183a7795fcfbb54ed76917bc1ddd4160cc77fa96e36cf8c5,
+        state_diff: array![
+            FullContractChanges {
+                address: 0x1.try_into().unwrap(),
+                prev_nonce: 0x0,
+                new_nonce: 0x0,
+                prev_class_hash: 0x0,
+                new_class_hash: 0x0,
+                storage_changes: array![
+                    FullContractStorageUpdate {
+                        key: 0x3ed1bd,
+                        prev_value: 0x0,
+                        new_value: 0x1ce9a92f1e2c5492481b4d10cc9386029c24af6b3d095d4ba1bbb8adb74fa62,
+                    },
+                    FullContractStorageUpdate {
+                        key: 0x3ed1be,
+                        prev_value: 0x0,
+                        new_value: 0x34c99055fee7ac422b25d8522bd7d08d6f787e99b7198fb8d90650d1add3e58,
+                    },
+                    FullContractStorageUpdate {
+                        key: 0x3ed1bf,
+                        prev_value: 0x0,
+                        new_value: 0x4e9a9c6f68f04f1eed27d1be22c010172ffebe6b157c90b865ce36e5161b8fb,
+                    },
+                ]
+                    .span(),
+            },
+            FullContractChanges {
+                address: target_contract_address.try_into().unwrap(),
+                prev_nonce: 0x0,
+                new_nonce: 0x0,
+                prev_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
+                new_class_hash: 0x406fd3dc3a4e87d24188645603d3e238d519ab1045397a4e3b1f93a9fa36565,
+                storage_changes: array![
+                    FullContractStorageUpdate {
+                        key: target_key,
+                        prev_value: 0x0,
+                        new_value: target_value,
+                    },
+                ]
+                    .span(),
+            },
+            FullContractChanges {
+                address: 0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
+                    .try_into()
+                    .unwrap(),
+                prev_nonce: 0x0,
+                new_nonce: 0x0,
+                prev_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
+                new_class_hash: 0x9524a94b41c4440a16fd96d7c1ef6ad6f44c1c013e96662734502cd4ee9b1f,
+                storage_changes: array![
+                    FullContractStorageUpdate {
+                        key: 0x3968b99888bd99c0284e1af8e55f2175d0737f540e8d6440d83add8e869e4c4,
+                        prev_value: 0x51d08b42e76b465ee,
+                        new_value: 0x51c402f2791baadee,
+                    },
+                    FullContractStorageUpdate {
+                        key: 0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a,
+                        prev_value: 0x2a13c459d6e6f09d0e598,
+                        new_value: 0x2a13c4665f375eeca9d98,
+                    },
+                ]
+                    .span(),
+            },
+            FullContractChanges {
+                address: 0x69a4f598b14f8424f2ee90b7a55fbc6083635da13f96a35acae04e6c149798d
+                    .try_into()
+                    .unwrap(),
+                prev_nonce: 0x672,
+                new_nonce: 0x675,
+                prev_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
+                new_class_hash: 0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f,
+                storage_changes: array![].span(),
+            },
+        ]
+            .span(),
+    };
+
+    let mut snos_output = array![];
+    shard_output.serialize(ref snos_output);
+    let mut it = snos_output.span().into_iter();
+    let os_output = deserialize_os_output(ref it);
+    assert_eq!(os_output, shard_output, "difference in serialization/deserialization");
+    snos_output
+}
+
+#[test]
+fn test_update_state_real_like_output_only_updates_initialized_contract_and_slot_add() {
+    let mut setup = setup();
+
+    let target_key: felt252 =
+        0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854;
+    let target_value: felt252 = 0x3;
+
+    let crd = CRDType::Add((
+        setup.test_contract_dispatcher.contract_address.try_into().unwrap(),
+        target_key.try_into().unwrap(),
+    ));
+
+    let mut setup = initialize_shard(setup, crd);
+
+    let snos_output = get_state_update_real_like(
+        setup.test_contract_dispatcher.contract_address.into(),
+        target_key,
+        target_value,
+    );
+
+    let before = setup.test_contract_dispatcher.read_storage_slot(target_key);
+    assert!(before == 0, "slot not default before update");
+
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+
+    let after = setup.test_contract_dispatcher.read_storage_slot(target_key);
+    assert!(after == target_value, "slot not updated correctly");
 }
 
 #[test]
@@ -298,7 +458,7 @@ fn test_update_state_with_set_operation() {
     );
     setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
 
-    // Verify that the counter was set to 5 (from SNOS output), replacing the previous value of 20
+    // Verify that the counter was set to 5 (from SNOS output), replacing the previous value of
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter was not set correctly");
     //println!("Counter after Set operation: {:?}", counter);
@@ -579,7 +739,6 @@ fn test_two_times_add() {
     //println!("All valid CRD combinations passed");
 }
 
-
 #[test]
 fn test_two_times_set() {
     let mut setup = setup();
@@ -710,7 +869,8 @@ fn test_too_many_add_updates() {
             (
                 setup
                     .test_contract_dispatcher
-                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(),
+                    0.try_into().unwrap())))
                     .slot(),
                 5,
             ),
@@ -788,7 +948,8 @@ fn test_two_times_init_add_and_two_updates() {
             (
                 setup
                     .test_contract_dispatcher
-                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(),
+                    0.try_into().unwrap())))
                     .slot(),
                 5,
             ),
@@ -820,7 +981,8 @@ fn test_two_times_init_add_and_two_updates() {
             (
                 setup
                     .test_contract_dispatcher
-                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+                    .get_storage_slots(CRDType::Add((0.try_into().unwrap(),
+                    0.try_into().unwrap())))
                     .slot(),
                 5,
             ),
@@ -841,7 +1003,6 @@ fn test_two_times_init_add_and_two_updates() {
             ],
         );
 }
-
 
 #[test]
 fn test_multiple_initializations_and_updates() {
@@ -1014,3 +1175,5 @@ fn two_times_lock() {
     // Initialize again with Lock type
     initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
 }
+
+
