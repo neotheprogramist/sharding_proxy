@@ -2,7 +2,6 @@ use snforge_std::EventSpyTrait;
 use core::traits::Into;
 use core::result::ResultTrait;
 use core::poseidon::PoseidonImpl;
-use openzeppelin_testing::constants as c;
 use snforge_std as snf;
 use starknet::ContractAddress;
 use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
@@ -29,6 +28,7 @@ use sharding_tests::contract_component::CRDTypeTrait;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
+const OWNER: felt252 = 0x1234567890abcdef1234567890abcdef12345678;
 
 #[derive(Drop)]
 struct TestSetup {
@@ -42,11 +42,11 @@ struct TestSetup {
 
 fn setup() -> TestSetup {
     // Deploy the sharding contract
-    let (sharding, mut sharding_spy) = deploy_contract_with_owner(c::OWNER().into(), "sharding");
+    let (sharding, mut sharding_spy) = deploy_contract_with_owner(OWNER.into(), "sharding");
 
     // Deploy the test contract
     let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        c::OWNER().into(), "test_contract",
+        OWNER.into(), "test_contract",
     );
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding };
@@ -59,7 +59,7 @@ fn setup() -> TestSetup {
 
     // Register the test contract as an operator
     snf::start_cheat_caller_address(
-        sharding_contract_config_dispatcher.contract_address, c::OWNER(),
+        sharding_contract_config_dispatcher.contract_address, OWNER,
     );
     sharding_contract_config_dispatcher
         .register_operator(test_contract_component_dispatcher.contract_address);
@@ -119,7 +119,7 @@ fn get_state_update(
 
 fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     let contract_slots_changes = setup.test_contract_dispatcher.get_storage_slots(crd_type);
@@ -208,17 +208,17 @@ fn test_update_state() {
 #[test]
 fn test_ending_event() {
     let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        c::OWNER().into(), "test_contract",
+        OWNER.into(), "test_contract",
     );
 
     let test_contract_dispatcher = ITestContractDispatcher { contract_address: test_contract };
 
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, c::OWNER());
+    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, OWNER);
     test_contract_dispatcher.increment();
     test_contract_dispatcher.increment();
     test_contract_dispatcher.increment();
 
-    let expected_increment = GameFinished { caller: c::OWNER(), shard_id: 0 };
+    let expected_increment = GameFinished { caller: OWNER, shard_id: 0 };
 
     test_spy
         .assert_emitted(
@@ -400,7 +400,7 @@ fn test_setlock_after_setlock_fails() {
 
     // Initialize the shard with SetLock operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     let contract_slots_changes = setup
@@ -429,7 +429,7 @@ fn test_setlock_after_add_fails() {
 
     // Initialize the shard with Add operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // First initialization with Add
@@ -460,7 +460,7 @@ fn test_set_after_setlock_fails() {
 
     // Initialize the shard with Set operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // First initialization with SetLock - should fail
@@ -491,7 +491,7 @@ fn test_set_after_add_fails() {
 
     // Initialize the shard with Add operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // First initialization with Add
@@ -521,7 +521,7 @@ fn test_add_after_set() {
 
     // Initialize the shard with Set operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // First initialization with Set
@@ -550,7 +550,7 @@ fn test_two_times_add() {
     let mut setup = setup();
 
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // Test Add after Add - should work
@@ -585,7 +585,7 @@ fn test_two_times_set() {
     let mut setup = setup();
 
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // Test Set after Set - should work
@@ -743,7 +743,7 @@ fn test_two_times_init_add_and_two_updates() {
 
     // Initialize the shard with Add operation type
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     let contract_slots_changes = setup
@@ -848,7 +848,7 @@ fn test_multiple_initializations_and_updates() {
     let mut setup = setup();
 
     snf::start_cheat_caller_address(
-        setup.test_contract_component_dispatcher.contract_address, c::OWNER(),
+        setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
 
     // Initialize the shard multiple times with SetLock operation type
@@ -1013,4 +1013,151 @@ fn two_times_lock() {
 
     // Initialize again with Lock type
     initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
+}
+
+// =============================================================================
+// TEE-based update tests (update_contract_state_with_proof)
+// =============================================================================
+
+#[test]
+fn test_update_contract_state_with_proof_success() {
+    let mut setup = setup();
+
+    // Initialize the shard with SetLock operation type
+    let mut setup = initialize_shard(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 0, "Counter should start at 0");
+
+    // Get the storage slot for counter
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // Create storage changes array (key, value pairs)
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
+
+    // Apply the state update using TEE-based method
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_with_proof(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        );
+
+    // Verify counter was updated
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 42, "Counter should be 42 after TEE update");
+    println!("Counter after TEE update: {:?}", counter);
+}
+
+#[test]
+#[should_panic(expected: ('Sharding: Shard id not set',))]
+fn test_update_contract_state_with_proof_no_shard() {
+    let setup = setup();
+
+    let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+
+    // Should fail - shard not initialized
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_with_proof(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Sharding: Shard id mismatch',))]
+fn test_update_contract_state_with_proof_wrong_shard_id() {
+    let mut setup = setup();
+
+    // Initialize with shard_id = 1
+    let mut setup = initialize_shard(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+
+    // Should fail - wrong shard_id (2 != 1)
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_with_proof(
+            setup.test_contract_dispatcher.contract_address,
+            storage_changes,
+            2, // wrong shard_id!
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Sharding: No storage changes',))]
+fn test_update_contract_state_with_proof_empty_changes() {
+    let mut setup = setup();
+
+    let mut setup = initialize_shard(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let storage_changes: Array<(felt252, felt252)> = array![];
+
+    // Should fail - empty storage changes
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_with_proof(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        );
+}
+
+#[test]
+fn test_update_contract_state_with_proof_multiple_slots() {
+    let mut setup = setup();
+
+    // Initialize the shard with SetLock operation type
+    let mut setup = initialize_shard(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    // Get the storage slot for counter
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // Create storage changes with multiple slots
+    let storage_changes: Array<(felt252, felt252)> = array![
+        (counter_slot, 100), (0x999, 200), // This slot may not be locked, so it might be ignored
+    ];
+
+    // Apply the state update using TEE-based method
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_with_proof(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        );
+
+    // Verify counter was updated
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 100, "Counter should be 100 after TEE update with multiple slots");
+    println!("Counter after TEE multi-slot update: {:?}", counter);
 }

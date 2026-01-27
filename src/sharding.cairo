@@ -15,6 +15,23 @@ pub trait ISharding<TContractState> {
         ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252,
     );
 
+    /// Update contract state with pre-verified storage changes.
+    ///
+    /// This is used by TEE-based sharding where storage proofs are verified off-chain.
+    /// Unlike `update_contract_state`, this takes storage changes directly without
+    /// SNOS output deserialization.
+    ///
+    /// # Arguments
+    /// * `contract_address` - The contract to update
+    /// * `storage_changes` - Array of (key, value) pairs to update
+    /// * `shard_id` - The shard ID for verification
+    fn update_contract_state_with_proof(
+        ref self: TContractState,
+        contract_address: ContractAddress,
+        storage_changes: Array<(felt252, felt252)>,
+        shard_id: felt252,
+    );
+
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 }
 
@@ -120,7 +137,6 @@ pub mod sharding {
                     let contract_shard_id = self.shard_id.read(contract_address);
                     assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
                     assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
-                    println!("Processing contract: {:?}", contract_address);
 
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {
@@ -136,6 +152,29 @@ pub mod sharding {
                     contract_dispatcher.update_shard_state(storage_changes, shard_id);
                 }
             }
+        }
+
+        fn update_contract_state_with_proof(
+            ref self: ContractState,
+            contract_address: ContractAddress,
+            storage_changes: Array<(felt252, felt252)>,
+            shard_id: felt252,
+        ) {
+            self.config.assert_only_owner_or_operator();
+
+            // Verify shard_id matches
+            let contract_shard_id = self.shard_id.read(contract_address);
+            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+
+            // Verify we have storage changes
+            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+
+            // Forward to the contract component
+            let contract_dispatcher = IContractComponentDispatcher {
+                contract_address: contract_address,
+            };
+            contract_dispatcher.update_shard_state(storage_changes, shard_id);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {

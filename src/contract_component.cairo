@@ -156,8 +156,6 @@ pub mod contract_component {
             let new_shard_id = current_shard_id + 1;
             self.shard_id.write(caller, new_shard_id);
 
-            println!("Initializing shard for caller: {:?}", caller);
-
             for crd_type in contract_slots_changes {
                 let crd_type = *crd_type;
 
@@ -171,7 +169,6 @@ pub mod contract_component {
 
                 self.slots.write(crd_type.slot(), (crd_type, init_count + 1));
                 self.shard_id_for_slot.write(slot, new_shard_id);
-                println!("Locked slot: {:?} with shard_id: {:?}", crd_type, new_shard_id);
             };
 
             // Emit initialization event
@@ -203,23 +200,9 @@ pub mod contract_component {
                 let slot_shard_id = self.shard_id_for_slot.read(slot);
                 let (crd_type, _) = self.slots.read(slot.slot);
 
-                println!(
-                    "Checking slot: {:?}, slot_shard_id: {:?}, contract_shard_id: {:?}, crd_type: {:?}",
-                    slot,
-                    slot_shard_id,
-                    shard_id,
-                    crd_type,
-                );
-
                 if slot_shard_id == shard_id {
                     slots_to_change.append((storage_key, storage_value));
-                } else {
-                    println!("Skipping slot with mismatched shard_id or not locked: {:?}", slot);
                 }
-            };
-
-            if slots_to_change.len() == 0 {
-                println!("WARNING: No slots to update for contract: {:?}", contract_address);
             };
 
             self.update_shard(slots_to_change.clone(), contract_address);
@@ -231,7 +214,6 @@ pub mod contract_component {
                     contract_address: contract_address, slot: storage_key,
                 };
 
-                println!("Unlocking slot: {:?}", slot);
                 let (crd_type, init_count) = self.slots.read(slot.slot);
                 assert(init_count != 0, Errors::STORAGE_UNLOCKED);
 
@@ -255,7 +237,6 @@ pub mod contract_component {
                 if self.shard_id_for_slot.read(slot) == shard_id {
                     match crd_type {
                         CRDType::Lock => {
-                            println!("Unlocking Lock slot: {:?}", slot);
                             self
                                 .slots
                                 .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
@@ -293,24 +274,15 @@ pub mod contract_component {
                 match crd_type {
                     CRDType::SetLock => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                        println!("Lock: Updating key={}, with value={}", key, value);
                     },
                     CRDType::Set => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                        println!("Set: Updating key={}, with value={}", key, value);
                     },
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
                         let new_value = current_value + value;
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
-                        println!(
-                            "Add: Updating key={}, current_value={}, added_value={}, new_value={}",
-                            key,
-                            current_value,
-                            value,
-                            new_value,
-                        );
                     },
                     CRDType::Lock => { // Do nothing
                     },
