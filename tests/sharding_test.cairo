@@ -28,7 +28,7 @@ use sharding_tests::contract_component::CRDTypeTrait;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
-const OWNER: felt252 = 0x1234567890abcdef1234567890abcdef12345678;
+const OWNER: ContractAddress = 123.try_into().unwrap();
 
 #[derive(Drop)]
 struct TestSetup {
@@ -42,11 +42,11 @@ struct TestSetup {
 
 fn setup() -> TestSetup {
     // Deploy the sharding contract
-    let (sharding, mut sharding_spy) = deploy_contract_with_owner(OWNER.into(), "sharding");
+    let (sharding, mut sharding_spy) = deploy_contract_with_owner(OWNER, "sharding");
 
     // Deploy the test contract
     let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        OWNER.into(), "test_contract",
+        OWNER, "test_contract",
     );
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding };
@@ -76,13 +76,13 @@ fn setup() -> TestSetup {
 }
 
 fn deploy_contract_with_owner(
-    owner: felt252, contract_name: ByteArray,
+    owner: ContractAddress, contract_name: ByteArray,
 ) -> (ContractAddress, EventSpy) {
     let contract = match snf::declare(contract_name).unwrap() {
         snf::DeclareResult::Success(contract) => contract,
         _ => core::panic_with_felt252('AlreadyDeclared not expected'),
     };
-    let calldata = array![owner];
+    let calldata = array![owner.into()];
     let (contract_address, _) = contract.deploy(@calldata).unwrap();
 
     let mut spy = snf::spy_events();
@@ -208,7 +208,7 @@ fn test_update_state() {
 #[test]
 fn test_ending_event() {
     let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        OWNER.into(), "test_contract",
+        OWNER, "test_contract",
     );
 
     let test_contract_dispatcher = ITestContractDispatcher { contract_address: test_contract };
