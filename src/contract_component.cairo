@@ -1,4 +1,4 @@
-use starknet::{ContractAddress};
+use starknet::ContractAddress;
 
 #[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
@@ -89,20 +89,16 @@ pub trait IContractComponent<TContractState> {
 
 #[starknet::component]
 pub mod contract_component {
-    use starknet::{
-        get_caller_address, ContractAddress, get_contract_address,
-        storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
-    };
     use core::starknet::SyscallResultTrait;
-    use starknet::syscalls::storage_write_syscall;
-    use starknet::syscalls::storage_read_syscall;
-    use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
-    use sharding_tests::sharding::StorageSlotWithContract;
-    use core::starknet::storage::StoragePointerWriteAccess;
+    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use sharding_tests::sharding::{
+        IShardingDispatcher, IShardingDispatcherTrait, StorageSlotWithContract,
+    };
+    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::storage_access::StorageAddress;
-    use super::CRDType;
-    use super::CRDTypeTrait;
-    use super::slot_value;
+    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use super::{CRDType, CRDTypeTrait, slot_value};
 
     type shard_id = felt252;
     type init_count = felt252;
@@ -138,6 +134,7 @@ pub mod contract_component {
         pub const NOT_INITIALIZED: felt252 = 'Component: Not initialized';
         pub const STORAGE_UNLOCKED: felt252 = 'Component: Storage is unlocked';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
+        pub const NO_SLOTS_MATCHED: felt252 = 'Component: No slots matched';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -153,7 +150,9 @@ pub mod contract_component {
             self.sharding_contract_address.write(sharding_contract_address);
             let current_shard_id = self.shard_id.read(caller);
 
-            let new_shard_id = current_shard_id + 1;
+            // Safe increment via u256 to prevent overflow
+            let current_u256: u256 = current_shard_id.into();
+            let new_shard_id: felt252 = (current_u256 + 1).try_into().expect('Shard ID overflow');
             self.shard_id.write(caller, new_shard_id);
 
             for crd_type in contract_slots_changes {
@@ -167,9 +166,14 @@ pub mod contract_component {
                     contract_address: crd_type.contract_address(), slot: crd_type.slot(),
                 };
 
-                self.slots.write(crd_type.slot(), (crd_type, init_count + 1));
+                // Safe increment via u256 to prevent overflow
+                let init_count_u256: u256 = init_count.into();
+                let new_init_count: felt252 = (init_count_u256 + 1)
+                    .try_into()
+                    .expect('Init count overflow');
+                self.slots.write(crd_type.slot(), (crd_type, new_init_count));
                 self.shard_id_for_slot.write(slot, new_shard_id);
-            };
+            }
 
             // Emit initialization event
             let sharding_dispatcher = IShardingDispatcher {
@@ -183,6 +187,9 @@ pub mod contract_component {
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
         ) {
+            let caller = get_caller_address();
+            assert(caller == self.sharding_contract_address.read(), 'Unauthorized caller');
+
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
 
@@ -203,7 +210,10 @@ pub mod contract_component {
                 if slot_shard_id == shard_id {
                     slots_to_change.append((storage_key, storage_value));
                 }
-            };
+            }
+
+            // Fail if no slots matched the shard_id (prevents silent no-op)
+            assert(slots_to_change.len() != 0, Errors::NO_SLOTS_MATCHED);
 
             self.update_shard(slots_to_change.clone(), contract_address);
 
@@ -224,7 +234,7 @@ pub mod contract_component {
                 } else {
                     self.slots.write(slot.slot, (crd_type, new_init_count));
                 }
-            };
+            }
 
             //Any Lock type slots are unlocked event if they are not updated
             for storage_change in storage_changes.span() {
@@ -244,7 +254,7 @@ pub mod contract_component {
                         _ => {},
                     }
                 }
-            };
+            }
 
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
         }
@@ -281,13 +291,18 @@ pub mod contract_component {
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
-                        let new_value = current_value + value;
+                        // Safe addition via u256 to prevent overflow
+                        let current_u256: u256 = current_value.into();
+                        let value_u256: u256 = value.into();
+                        let sum = current_u256 + value_u256;
+                        // Convert back - panics if overflow beyond felt252 range
+                        let new_value: felt252 = sum.try_into().expect('Arithmetic overflow');
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },
                     CRDType::Lock => { // Do nothing
                     },
                 }
-            };
+            }
             self.emit(ContractComponentUpdated { storage_changes });
         }
     }

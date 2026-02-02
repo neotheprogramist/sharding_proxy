@@ -1,5 +1,14 @@
-use starknet::{ContractAddress};
 use sharding_tests::contract_component::CRDType;
+use starknet::ContractAddress;
+
+#[starknet::interface]
+pub trait IStorageCommitment<TContractState> {
+    /// Register a storage commitment that was verified by the TEE (SP1 proof).
+    fn register_verified_commitment(ref self: TContractState, commitment: u256);
+
+    /// Check if a commitment has already been registered
+    fn is_verified(ref self: TContractState, commitment: u256) -> bool;
+}
 
 #[derive(Drop, Serde, starknet::Store, Hash, Copy, Debug)]
 pub struct StorageSlotWithContract {
@@ -37,21 +46,19 @@ pub trait ISharding<TContractState> {
 
 #[starknet::contract]
 pub mod sharding {
-    use core::poseidon::{PoseidonImpl};
-    use openzeppelin::access::ownable::{
-        OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
-    };
-    use starknet::{
-        get_caller_address, ContractAddress,
-        storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
+    use core::poseidon::poseidon_hash_span;
+    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use sharding_tests::config::config_cpt;
+    use sharding_tests::config::config_cpt::InternalTrait as ConfigInternal;
+    use sharding_tests::contract_component::{
+        CRDType, IContractComponentDispatcher, IContractComponentDispatcherTrait,
     };
     use sharding_tests::shard_output::ShardOutput;
-    use super::ISharding;
-    use sharding_tests::contract_component::IContractComponentDispatcher;
-    use sharding_tests::contract_component::IContractComponentDispatcherTrait;
-    use sharding_tests::config::{config_cpt, config_cpt::InternalTrait as ConfigInternal};
-    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use sharding_tests::contract_component::CRDType;
+    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
+    use starknet::{ContractAddress, get_caller_address};
+    use super::{ISharding, IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait};
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(path: config_cpt, storage: config, event: ConfigEvent);
@@ -70,6 +77,7 @@ pub mod sharding {
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
         config: config_cpt::Storage,
+        storage_commitment_registry: ContractAddress,
     }
 
     #[event]
@@ -97,8 +105,13 @@ pub mod sharding {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, owner: ContractAddress) {
+    fn constructor(
+        ref self: ContractState,
+        owner: ContractAddress,
+        storage_commitment_registry: ContractAddress,
+    ) {
         self.ownable.initializer(owner);
+        self.storage_commitment_registry.write(storage_commitment_registry);
     }
 
     #[abi(embed_v0)]
@@ -108,7 +121,9 @@ pub mod sharding {
 
             let caller = get_caller_address();
             let current_shard_id = self.shard_id.read(caller);
-            let new_shard_id = current_shard_id + 1;
+            // Safe increment via u256 to prevent overflow
+            let current_u256: u256 = current_shard_id.into();
+            let new_shard_id: felt252 = (current_u256 + 1).try_into().expect('Shard ID overflow');
             self.shard_id.write(caller, new_shard_id);
             self.initializer_contract_address.write(caller);
 
@@ -143,8 +158,10 @@ pub mod sharding {
                         let (storage_key, storage_value) = *storage_change;
 
                         storage_changes.append((storage_key, storage_value));
-                    };
+                    }
                     assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
+
+                    let commitment = self.compute_commitment(storage_changes.span());
 
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
@@ -162,25 +179,64 @@ pub mod sharding {
         ) {
             self.config.assert_only_owner_or_operator();
 
-            // Verify shard_id matches
-            let contract_shard_id = self.shard_id.read(contract_address);
-            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-            assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+            if self.initializer_contract_address.read() == contract_address {
+                // Verify shard_id matches
+                let contract_shard_id = self.shard_id.read(contract_address);
+                assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+                assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
 
-            // Verify we have storage changes
-            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+                // Verify we have storage changes
+                assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
-            // Forward to the contract component
-            let contract_dispatcher = IContractComponentDispatcher {
-                contract_address: contract_address,
-            };
-            contract_dispatcher.update_shard_state(storage_changes, shard_id);
+                let storage_commitment_registry_dispatcher = IStorageCommitmentDispatcher {
+                    contract_address: self.storage_commitment_registry.read(),
+                };
+
+                let commitment = self.compute_commitment(storage_changes.span());
+                assert(
+                    storage_commitment_registry_dispatcher.is_verified(commitment),
+                    'Storage commitment not verified',
+                );
+
+                // Forward to the contract component
+                let contract_dispatcher = IContractComponentDispatcher {
+                    contract_address: contract_address,
+                };
+                contract_dispatcher.update_shard_state(storage_changes, shard_id);
+            }
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
             let shard_id = self.shard_id.read(contract_address);
             assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
             shard_id
+        }
+    }
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        /// Computes storage commitment as poseidon_hash(keys || values).
+        /// Matches Rust: Poseidon::hash_array(&[keys..., values...]).
+        /// Returns u256 for compatibility with StorageCommitment contract.
+        fn compute_commitment(
+            self: @ContractState, storage_changes: Span<(felt252, felt252)>,
+        ) -> u256 {
+            let mut data: Array<felt252> = ArrayTrait::new();
+
+            // First all keys
+            for change in storage_changes {
+                let (key, _) = *change;
+                data.append(key);
+            }
+
+            // Then all values
+            for change in storage_changes {
+                let (_, value) = *change;
+                data.append(value);
+            }
+
+            // Convert felt252 to u256 (always safe - felt252 fits in u256)
+            poseidon_hash_span(data.span()).into()
         }
     }
 }

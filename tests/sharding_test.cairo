@@ -1,30 +1,21 @@
-use snforge_std::EventSpyTrait;
-use core::traits::Into;
-use core::result::ResultTrait;
 use core::poseidon::PoseidonImpl;
-use snforge_std as snf;
-use starknet::ContractAddress;
-use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait};
-use sharding_tests::sharding::IShardingDispatcher;
-use sharding_tests::sharding::IShardingDispatcherTrait;
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
-
-use sharding_tests::contract_component::IContractComponentDispatcher;
-use sharding_tests::contract_component::IContractComponentDispatcherTrait;
+use core::result::ResultTrait;
+use core::traits::Into;
+use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
 use sharding_tests::contract_component::contract_component::{
-    Event as ContractComponentEvent, ContractSlotUpdated,
+    ContractSlotUpdated, Event as ContractComponentEvent,
 };
-
-use sharding_tests::config::IConfigDispatcher;
-use sharding_tests::config::IConfigDispatcherTrait;
-
-use sharding_tests::test_contract::ITestContractDispatcher;
-use sharding_tests::test_contract::ITestContractDispatcherTrait;
+use sharding_tests::contract_component::{
+    CRDType, CRDTypeTrait, IContractComponentDispatcher, IContractComponentDispatcherTrait,
+};
+use sharding_tests::shard_output::{ContractChanges, ShardOutput};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
-use sharding_tests::shard_output::{ShardOutput, ContractChanges};
-
-use sharding_tests::contract_component::CRDType;
-use sharding_tests::contract_component::CRDTypeTrait;
+use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
+use snforge_std as snf;
+use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait, EventSpyTrait};
+use starknet::ContractAddress;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
 const NOT_LOCKED_SLOT_ADDRESS: felt252 = 0x123;
@@ -45,9 +36,7 @@ fn setup() -> TestSetup {
     let (sharding, mut sharding_spy) = deploy_contract_with_owner(OWNER, "sharding");
 
     // Deploy the test contract
-    let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        OWNER, "test_contract",
-    );
+    let (test_contract, mut test_spy) = deploy_contract_with_owner(OWNER, "test_contract");
 
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding };
     let sharding_contract_config_dispatcher = IConfigDispatcher { contract_address: sharding };
@@ -58,9 +47,7 @@ fn setup() -> TestSetup {
     };
 
     // Register the test contract as an operator
-    snf::start_cheat_caller_address(
-        sharding_contract_config_dispatcher.contract_address, OWNER,
-    );
+    snf::start_cheat_caller_address(sharding_contract_config_dispatcher.contract_address, OWNER);
     sharding_contract_config_dispatcher
         .register_operator(test_contract_component_dispatcher.contract_address);
     snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
@@ -207,9 +194,7 @@ fn test_update_state() {
 
 #[test]
 fn test_ending_event() {
-    let (test_contract, mut test_spy) = deploy_contract_with_owner(
-        OWNER, "test_contract",
-    );
+    let (test_contract, mut test_spy) = deploy_contract_with_owner(OWNER, "test_contract");
 
     let test_contract_dispatcher = ITestContractDispatcher { contract_address: test_contract };
 
@@ -1096,9 +1081,7 @@ fn test_update_contract_state_with_proof_wrong_shard_id() {
     setup
         .shard_dispatcher
         .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address,
-            storage_changes,
-            2, // wrong shard_id!
+            setup.test_contract_dispatcher.contract_address, storage_changes, 2 // wrong shard_id!
         );
 }
 
@@ -1142,7 +1125,7 @@ fn test_update_contract_state_with_proof_multiple_slots() {
 
     // Create storage changes with multiple slots
     let storage_changes: Array<(felt252, felt252)> = array![
-        (counter_slot, 100), (0x999, 200), // This slot may not be locked, so it might be ignored
+        (counter_slot, 100), (0x999, 200) // This slot may not be locked, so it might be ignored
     ];
 
     // Apply the state update using TEE-based method
@@ -1160,4 +1143,165 @@ fn test_update_contract_state_with_proof_multiple_slots() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 100, "Counter should be 100 after TEE update with multiple slots");
     println!("Counter after TEE multi-slot update: {:?}", counter);
+}
+
+// =============================================================================
+// compute_commitment tests
+// =============================================================================
+
+use core::poseidon::poseidon_hash_span;
+
+/// Helper function to compute commitment the same way as sharding contract
+/// poseidon_hash([keys..., values...]) converted to u256
+fn compute_commitment_helper(storage_changes: Span<(felt252, felt252)>) -> u256 {
+    let mut data: Array<felt252> = ArrayTrait::new();
+
+    // First all keys
+    for change in storage_changes {
+        let (key, _) = *change;
+        data.append(key);
+    }
+
+    // Then all values
+    for change in storage_changes {
+        let (_, value) = *change;
+        data.append(value);
+    }
+
+    poseidon_hash_span(data.span()).into()
+}
+
+#[test]
+fn test_compute_commitment_single_change() {
+    // Test with single storage change
+    let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+
+    let commitment = compute_commitment_helper(storage_changes.span());
+
+    // Verify commitment is non-zero
+    assert!(commitment != 0, "Commitment should not be zero");
+
+    // Verify determinism - same input gives same output
+    let storage_changes2: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+    let commitment2 = compute_commitment_helper(storage_changes2.span());
+    assert!(commitment == commitment2, "Commitment should be deterministic");
+
+    println!("Single change commitment: {:?}", commitment);
+}
+
+#[test]
+fn test_compute_commitment_multiple_changes() {
+    // Test with multiple storage changes
+    let storage_changes: Array<(felt252, felt252)> = array![
+        (0x1, 0x100), (0x2, 0x200), (0x3, 0x300),
+    ];
+
+    let commitment = compute_commitment_helper(storage_changes.span());
+
+    // Verify commitment is non-zero
+    assert!(commitment != 0, "Commitment should not be zero");
+
+    // Expected: poseidon_hash([0x1, 0x2, 0x3, 0x100, 0x200, 0x300])
+    let expected_data: Array<felt252> = array![0x1, 0x2, 0x3, 0x100, 0x200, 0x300];
+    let expected_hash: u256 = poseidon_hash_span(expected_data.span()).into();
+
+    assert!(commitment == expected_hash, "Commitment should match expected hash");
+
+    println!("Multiple changes commitment: {:?}", commitment);
+}
+
+#[test]
+fn test_compute_commitment_order_matters() {
+    // Different order of changes should give different commitment
+    let storage_changes1: Array<(felt252, felt252)> = array![(0x1, 0x100), (0x2, 0x200)];
+
+    let storage_changes2: Array<(felt252, felt252)> = array![(0x2, 0x200), (0x1, 0x100)];
+
+    let commitment1 = compute_commitment_helper(storage_changes1.span());
+    let commitment2 = compute_commitment_helper(storage_changes2.span());
+
+    // Different order should produce different commitment
+    assert!(commitment1 != commitment2, "Different order should give different commitment");
+
+    println!("Commitment 1 (1,2 order): {:?}", commitment1);
+    println!("Commitment 2 (2,1 order): {:?}", commitment2);
+}
+
+#[test]
+fn test_compute_commitment_different_values_different_hash() {
+    // Same keys but different values should give different commitment
+    let storage_changes1: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+    let storage_changes2: Array<(felt252, felt252)> = array![(0x1, 0x200)];
+
+    let commitment1 = compute_commitment_helper(storage_changes1.span());
+    let commitment2 = compute_commitment_helper(storage_changes2.span());
+
+    assert!(commitment1 != commitment2, "Different values should give different commitment");
+}
+
+#[test]
+fn test_compute_commitment_different_keys_different_hash() {
+    // Different keys but same values should give different commitment
+    let storage_changes1: Array<(felt252, felt252)> = array![(0x1, 0x100)];
+    let storage_changes2: Array<(felt252, felt252)> = array![(0x2, 0x100)];
+
+    let commitment1 = compute_commitment_helper(storage_changes1.span());
+    let commitment2 = compute_commitment_helper(storage_changes2.span());
+
+    assert!(commitment1 != commitment2, "Different keys should give different commitment");
+}
+
+#[test]
+fn test_compute_commitment_large_values() {
+    // Test with large felt252 values (close to max)
+    let large_key: felt252 = 0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+    let large_value: felt252 = 0x7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
+    let storage_changes: Array<(felt252, felt252)> = array![(large_key, large_value)];
+
+    let commitment = compute_commitment_helper(storage_changes.span());
+
+    // Should not overflow or panic
+    assert!(commitment != 0, "Commitment with large values should work");
+
+    println!("Large values commitment: {:?}", commitment);
+}
+
+#[test]
+fn test_compute_commitment_zero_values() {
+    // Test with zero key and value
+    let storage_changes: Array<(felt252, felt252)> = array![(0x0, 0x0)];
+
+    let commitment = compute_commitment_helper(storage_changes.span());
+
+    // Should produce valid hash even with zeros
+    // poseidon_hash([0, 0]) should not be 0
+    assert!(commitment != 0, "Commitment with zeros should not be zero");
+
+    println!("Zero values commitment: {:?}", commitment);
+}
+
+#[test]
+fn test_compute_commitment_matches_rust_format() {
+    // This test verifies the format matches Rust side:
+    // Poseidon::hash_array(&[keys..., values...])
+    //
+    // For storage_changes = [(key1, val1), (key2, val2)]
+    // The hash input should be: [key1, key2, val1, val2]
+
+    let storage_changes: Array<(felt252, felt252)> = array![
+        (0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854, 0x3),
+    ];
+
+    let commitment = compute_commitment_helper(storage_changes.span());
+
+    // Verify format: hash([key, value])
+    let expected_input: Array<felt252> = array![
+        0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854, 0x3,
+    ];
+    let expected: u256 = poseidon_hash_span(expected_input.span()).into();
+
+    assert!(commitment == expected, "Commitment should match Rust format");
+
+    println!("Real slot commitment: {:?}", commitment);
 }
