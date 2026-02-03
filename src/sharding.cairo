@@ -88,6 +88,12 @@ pub mod sharding {
         OwnableEvent: ownable_cpt::Event,
         #[flat]
         ConfigEvent: config_cpt::Event,
+        StorageCommitmentVerified: StorageCommitmentVerified,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct StorageCommitmentVerified {
+        pub commitment: u256,
     }
 
     #[derive(Drop, starknet::Event)]

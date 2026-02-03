@@ -14,7 +14,9 @@ use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
 use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
 use snforge_std as snf;
-use snforge_std::{ContractClassTrait, EventSpy, EventSpyAssertionsTrait, EventSpyTrait};
+use snforge_std::{
+    ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait, EventSpyTrait,
+};
 use starknet::ContractAddress;
 
 const NOT_LOCKED_SLOT_VALUE: felt252 = 0x2;
@@ -31,9 +33,31 @@ struct TestSetup {
     test_contract_component_dispatcher: IContractComponentDispatcher,
 }
 
+/// Deploy StorageCommitment contract (from katana-tee)
+fn deploy_storage_commitment() -> ContractAddress {
+    let contract_class = snf::declare("StorageCommitment").unwrap().contract_class();
+    let calldata: Array<felt252> = array![];
+    let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
+    contract_address
+}
+
+/// Deploy sharding contract with owner and storage_commitment_registry
+fn deploy_sharding(
+    owner: ContractAddress, storage_commitment_registry: ContractAddress,
+) -> (ContractAddress, EventSpy) {
+    let contract_class = snf::declare("sharding").unwrap().contract_class();
+    let calldata: Array<felt252> = array![owner.into(), storage_commitment_registry.into()];
+    let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
+    let spy = snf::spy_events();
+    (contract_address, spy)
+}
+
 fn setup() -> TestSetup {
-    // Deploy the sharding contract
-    let (sharding, mut sharding_spy) = deploy_contract_with_owner(OWNER, "sharding");
+    // Deploy storage_commitment first (required by sharding)
+    let storage_commitment = deploy_storage_commitment();
+
+    // Deploy the sharding contract with storage_commitment_registry
+    let (sharding, mut sharding_spy) = deploy_sharding(OWNER, storage_commitment);
 
     // Deploy the test contract
     let (test_contract, mut test_spy) = deploy_contract_with_owner(OWNER, "test_contract");
