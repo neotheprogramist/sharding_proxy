@@ -87,7 +87,7 @@ pub mod test_contract {
             self.emit(Increment { caller });
 
             let shard_id = self.contract_component.get_shard_id(get_contract_address());
-            if self.counter.read() == 3 {
+            if self.counter.read() % 3 == 0 {
                 self.emit(GameFinished { caller, shard_id });
             }
         }
