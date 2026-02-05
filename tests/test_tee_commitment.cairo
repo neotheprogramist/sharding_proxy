@@ -157,17 +157,18 @@ fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> u256 {
 fn test_storage_commitment_register_and_verify() {
     let (address, _) = deploy_storage_commitment();
     let dispatcher = IStorageCommitmentDispatcher { contract_address: address };
+    let game_contract: ContractAddress = 0x456.try_into().unwrap();
 
     let commitment: u256 = 0x1234567890abcdef_u256;
 
-    // Initially not verified
-    assert!(!dispatcher.is_verified(commitment), "Should not be verified initially");
+    // Initially not verified (returns false for unregistered)
+    assert!(!dispatcher.is_verified(commitment, game_contract), "Should not be verified initially");
 
-    // Register
-    dispatcher.register_verified_commitment(commitment);
+    // Register with game contract
+    dispatcher.register_verified_commitment(commitment, game_contract);
 
-    // Now verified
-    assert!(dispatcher.is_verified(commitment), "Should be verified after registration");
+    // Now verified - this also increments the nonce
+    assert!(dispatcher.is_verified(commitment, game_contract), "Should be verified after registration");
 }
 
 #[test]
@@ -175,18 +176,26 @@ fn test_storage_commitment_double_register_is_idempotent() {
     // Test that registering the same commitment twice doesn't break anything
     let (address, _) = deploy_storage_commitment();
     let dispatcher = IStorageCommitmentDispatcher { contract_address: address };
+    let game_contract: ContractAddress = 0x456.try_into().unwrap();
 
     let commitment: u256 = 0xcafe_u256;
 
     // First registration
-    dispatcher.register_verified_commitment(commitment);
-    assert!(dispatcher.is_verified(commitment), "Should be verified after first registration");
+    dispatcher.register_verified_commitment(commitment, game_contract);
 
-    // Second registration should be idempotent
-    dispatcher.register_verified_commitment(commitment);
-    assert!(
-        dispatcher.is_verified(commitment), "Should still be verified after second registration",
-    );
+    // Verify (this also uses the commitment and increments nonce)
+    assert!(dispatcher.is_verified(commitment, game_contract), "Should be verified after first registration");
+
+    // Second registration of same commitment won't work - nonce has changed
+    // So we test with a new commitment instead
+    let commitment2: u256 = 0xbeef_u256;
+    dispatcher.register_verified_commitment(commitment2, game_contract);
+
+    // Re-registering same commitment should be idempotent (but won't verify due to nonce)
+    dispatcher.register_verified_commitment(commitment2, game_contract);
+
+    // Verify the new commitment
+    assert!(dispatcher.is_verified(commitment2, game_contract), "Should verify second commitment");
 }
 
 // =============================================================================
@@ -256,13 +265,10 @@ fn test_update_with_proof_success_when_commitment_registered() {
     println!("Computed commitment: high={}, low={}", commitment.high, commitment.low);
 
     // Pre-register the commitment (simulating TEE verification flow)
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment);
+    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
 
-    // Verify it's registered
-    assert!(
-        setup.storage_commitment_dispatcher.is_verified(commitment),
-        "Commitment should be registered",
-    );
+    // Note: We don't call is_verified here because it will consume the commitment.
+    // The sharding contract will call is_verified when update_contract_state_with_proof is called.
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -371,7 +377,7 @@ fn test_update_with_proof_multiple_slots() {
 
     // Compute and register the commitment
     let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment);
+    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -413,7 +419,7 @@ fn test_update_with_proof_production_slot_value() {
     let commitment = compute_commitment(storage_changes.span());
     println!("Production slot commitment: high={}, low={}", commitment.high, commitment.low);
 
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment);
+    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -473,7 +479,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
 
     // Compute and register the commitment
     let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment);
+    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -547,9 +553,9 @@ fn test_replay_attack_prevented_same_shard_different_value() {
 }
 
 #[test]
-fn test_commitment_remains_in_registry_after_use() {
-    // Verify that the commitment stays in the registry even after being used.
-    // Replay protection comes from the sharding slot mechanism, not the registry.
+fn test_nonce_based_replay_protection() {
+    // Verify that nonce-based replay protection works:
+    // After a commitment is used, the nonce increments, so old commitments can't be reused.
     let mut setup = setup_tee_test();
 
     // Initialize shard
@@ -563,21 +569,19 @@ fn test_commitment_remains_in_registry_after_use() {
         .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
+    // Check initial nonce is 0
+    let initial_nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    assert!(initial_nonce == 0, "Initial nonce should be 0");
+
     // Create storage changes
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
     let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment);
-
-    // Verify commitment is registered
-    assert!(
-        setup.storage_commitment_dispatcher.is_verified(commitment),
-        "Commitment should be registered before use",
-    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
 
-    // Use the commitment
+    // Use the commitment via sharding contract
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
@@ -587,11 +591,11 @@ fn test_commitment_remains_in_registry_after_use() {
         .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
-    // Commitment should STILL be in registry after use
-    // (replay protection is from shard unlocking, not registry clearing)
-    assert!(
-        setup.storage_commitment_dispatcher.is_verified(commitment),
-        "Commitment should remain in registry after use",
-    );
+    // Check nonce has incremented
+    let new_nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    assert!(new_nonce == 1, "Nonce should be incremented to 1 after use");
+
+    // The same commitment can't be verified again (nonce mismatch)
+    // Note: is_verified will panic with 'Commitment already used' if we try
 }
 

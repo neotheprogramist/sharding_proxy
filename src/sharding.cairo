@@ -1,13 +1,31 @@
 use sharding_tests::contract_component::CRDType;
 use starknet::ContractAddress;
 
+/// Interface for the Storage Commitment contract.
+///
+/// Security model:
+/// - Commitments are pre-computed hashes: hash(storage_commitment, contract_address, nonce, global_state_root)
+/// - Registration just stores the hash (from SP1 journal)
+/// - Verification recomputes the hash using stored nonce and checks if it was registered
+/// - After successful verification, commitment is deleted and nonce is incremented
 #[starknet::interface]
 pub trait IStorageCommitment<TContractState> {
-    /// Register a storage commitment that was verified by the TEE (SP1 proof).
-    fn register_verified_commitment(ref self: TContractState, commitment: u256);
+    /// Register a storage commitment hash that was verified by the TEE (SP1 proof).
+    fn register_verified_commitment(ref self: TContractState, commitment: felt252);
 
-    /// Check if a commitment has already been registered
-    fn is_verified(ref self: TContractState, commitment: u256) -> bool;
+    /// Verify a commitment by recomputing the hash with the stored nonce.
+    fn verify(
+        ref self: TContractState,
+        storage_commitment: felt252,
+        contract_address: ContractAddress,
+        global_state_root: felt252,
+    ) -> bool;
+
+    fn is_registered(self: @TContractState, commitment: felt252) -> bool;
+
+    fn get_nonce(self: @TContractState, contract_address: ContractAddress) -> u64;
+
+    fn get_latest_global_state_root(self: @TContractState, contract_address: ContractAddress) -> felt252;
 }
 
 #[derive(Drop, Serde, starknet::Store, Hash, Copy, Debug)]
@@ -24,21 +42,19 @@ pub trait ISharding<TContractState> {
         ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252,
     );
 
-    /// Update contract state with pre-verified storage changes.
-    ///
-    /// This is used by TEE-based sharding where storage proofs are verified off-chain.
-    /// Unlike `update_contract_state`, this takes storage changes directly without
-    /// SNOS output deserialization.
+    /// Update contract state with pre-verified storage changes from TEE.
     ///
     /// # Arguments
-    /// * `contract_address` - The contract to update
+    /// * `contract_address` - The game contract to update
     /// * `storage_changes` - Array of (key, value) pairs to update
     /// * `shard_id` - The shard ID for verification
+    /// * `global_state_root` - The state root from TEE attestation
     fn update_contract_state_with_proof(
         ref self: TContractState,
         contract_address: ContractAddress,
         storage_changes: Array<(felt252, felt252)>,
         shard_id: felt252,
+        global_state_root: felt252,
     );
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
@@ -93,7 +109,7 @@ pub mod sharding {
 
     #[derive(Drop, starknet::Event)]
     pub struct StorageCommitmentVerified {
-        pub commitment: u256,
+        pub storage_commitment: felt252,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -167,8 +183,6 @@ pub mod sharding {
                     }
                     assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
 
-                    let commitment = self.compute_commitment(storage_changes.span());
-
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
@@ -177,11 +191,21 @@ pub mod sharding {
             }
         }
 
+        /// Update contract state with pre-verified storage changes from TEE.
+        ///
+        /// Flow:
+        /// 1. Compute storage_commitment = hash(keys || values)
+        /// 2. Call StorageCommitment.verify(storage_commitment, contract_address, global_state_root)
+        ///    which internally computes full_commitment = hash(storage_commitment, contract_address, nonce, state_root)
+        ///    and checks if it was registered
+        /// 3. If verified, nonce is incremented and commitment is deleted
+        /// 4. Forward storage changes to contract
         fn update_contract_state_with_proof(
             ref self: ContractState,
             contract_address: ContractAddress,
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
+            global_state_root: felt252,
         ) {
             self.config.assert_only_owner_or_operator();
 
@@ -194,15 +218,22 @@ pub mod sharding {
                 // Verify we have storage changes
                 assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
-                let storage_commitment_registry_dispatcher = IStorageCommitmentDispatcher {
+                let storage_commitment_registry = IStorageCommitmentDispatcher {
                     contract_address: self.storage_commitment_registry.read(),
                 };
 
-                let commitment = self.compute_commitment(storage_changes.span());
+                // Compute storage_commitment = hash(keys || values)
+                let storage_commitment = self.compute_storage_commitment(storage_changes.span());
+
+                // Verify: recomputes full hash with stored nonce and checks registration
                 assert(
-                    storage_commitment_registry_dispatcher.is_verified(commitment),
+                    storage_commitment_registry.verify(
+                        storage_commitment, contract_address, global_state_root,
+                    ),
                     'Storage commitment not verified',
                 );
+
+                self.emit(StorageCommitmentVerified { storage_commitment });
 
                 // Forward to the contract component
                 let contract_dispatcher = IContractComponentDispatcher {
@@ -222,11 +253,11 @@ pub mod sharding {
     #[generate_trait]
     impl InternalImpl of InternalTrait {
         /// Computes storage commitment as poseidon_hash(keys || values).
-        /// Matches Rust: Poseidon::hash_array(&[keys..., values...]).
-        /// Returns u256 for compatibility with StorageCommitment contract.
-        fn compute_commitment(
-            self: @ContractState, storage_changes: Span<(felt252, felt252)>,
-        ) -> u256 {
+        /// Matches Rust: compute_storage_commitment() in katana-tee.
+        fn compute_storage_commitment(
+            self: @ContractState,
+            storage_changes: Span<(felt252, felt252)>,
+        ) -> felt252 {
             let mut data: Array<felt252> = ArrayTrait::new();
 
             // First all keys
@@ -242,7 +273,7 @@ pub mod sharding {
             }
 
             // Convert felt252 to u256 (always safe - felt252 fits in u256)
-            poseidon_hash_span(data.span()).into()
+            poseidon_hash_span(data.span())
         }
     }
 }

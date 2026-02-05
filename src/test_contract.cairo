@@ -86,8 +86,11 @@ pub mod test_contract {
             let caller = get_caller_address();
             self.emit(Increment { caller });
 
-            let shard_id = self.contract_component.get_shard_id(get_contract_address());
-            if self.counter.read() % 3 == 0 {
+            // Emit GameFinished every 3 increments (3, 6, 9, ...)
+            // Convert to u256 for modulo operation (felt252 doesn't support %)
+            let counter_u256: u256 = self.counter.read().into();
+            if counter_u256 > 0 && counter_u256 % 3 == 0 {
+                let shard_id = self.contract_component.get_shard_id(get_contract_address());
                 self.emit(GameFinished { caller, shard_id });
             }
         }
