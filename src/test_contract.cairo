@@ -1,3 +1,12 @@
+//! Example game contract demonstrating sharding integration.
+//!
+//! This is a minimal reference implementation. To integrate your own game:
+//! 1. Embed `contract_component` in your contract's storage
+//! 2. Emit an event when a shard round finishes (like `GameFinished` here)
+//! 3. Call `initialize_shard()` with your storage slots + CRDT types
+//!
+//! See the main README for a full integration guide.
+
 use sharding_tests::contract_component::CRDType;
 
 #[starknet::interface]

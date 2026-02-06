@@ -4,7 +4,7 @@
 //! 1. StorageCommitment registry deployment
 //! 2. Sharding contract deployment with registry reference
 //! 3. Commitment registration and verification
-//! 4. update_contract_state_with_proof with proper commitment checks
+//! 4. update_contract_state_tee with proper commitment checks
 
 use core::poseidon::poseidon_hash_span;
 use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
@@ -17,9 +17,7 @@ use sharding_tests::storage_commitment::{
 };
 use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
 use snforge_std as snf;
-use snforge_std::{
-    ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait, EventSpyTrait,
-};
+use snforge_std::{ContractClassTrait, DeclareResultTrait};
 use starknet::ContractAddress;
 
 const OWNER: ContractAddress = 123.try_into().unwrap();
@@ -38,28 +36,24 @@ struct TeeTestSetup {
     test_contract_address: ContractAddress,
     test_contract_dispatcher: ITestContractDispatcher,
     test_contract_component_dispatcher: IContractComponentDispatcher,
-    storage_commitment_spy: EventSpy,
-    sharding_spy: EventSpy,
 }
 
 /// Deploy StorageCommitment contract
-fn deploy_storage_commitment() -> (ContractAddress, EventSpy) {
+fn deploy_storage_commitment() -> ContractAddress {
     let contract_class = snf::declare("StorageCommitment").unwrap().contract_class();
     let calldata: Array<felt252> = array![];
     let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
-    let spy = snf::spy_events();
-    (contract_address, spy)
+    contract_address
 }
 
 /// Deploy sharding contract WITH storage_commitment_registry
 fn deploy_sharding_with_registry(
     owner: ContractAddress, storage_commitment_registry: ContractAddress,
-) -> (ContractAddress, EventSpy) {
+) -> ContractAddress {
     let contract_class = snf::declare("sharding").unwrap().contract_class();
     let calldata: Array<felt252> = array![owner.into(), storage_commitment_registry.into()];
     let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
-    let spy = snf::spy_events();
-    (contract_address, spy)
+    contract_address
 }
 
 /// Deploy test contract
@@ -73,15 +67,13 @@ fn deploy_test_contract(owner: ContractAddress) -> ContractAddress {
 /// Complete setup with all contracts properly wired
 fn setup_tee_test() -> TeeTestSetup {
     // 1. Deploy StorageCommitment
-    let (storage_commitment_address, storage_commitment_spy) = deploy_storage_commitment();
+    let storage_commitment_address = deploy_storage_commitment();
     let storage_commitment_dispatcher = IStorageCommitmentDispatcher {
         contract_address: storage_commitment_address,
     };
 
     // 2. Deploy sharding WITH the storage_commitment_registry
-    let (sharding_address, sharding_spy) = deploy_sharding_with_registry(
-        OWNER, storage_commitment_address,
-    );
+    let sharding_address = deploy_sharding_with_registry(OWNER, storage_commitment_address);
     let shard_dispatcher = IShardingDispatcher { contract_address: sharding_address };
     let config_dispatcher = IConfigDispatcher { contract_address: sharding_address };
 
@@ -108,13 +100,11 @@ fn setup_tee_test() -> TeeTestSetup {
         test_contract_address,
         test_contract_dispatcher,
         test_contract_component_dispatcher,
-        storage_commitment_spy,
-        sharding_spy,
     }
 }
 
-/// Initialize shard for test contract
-fn initialize_shard_for_test(ref setup: TeeTestSetup, crd_type: CRDType) {
+/// Initialize shard for test contract (takes ownership and returns setup)
+fn initialize_shard_for_test(setup: TeeTestSetup, crd_type: CRDType) -> TeeTestSetup {
     snf::start_cheat_caller_address(
         setup.test_contract_component_dispatcher.contract_address, OWNER,
     );
@@ -128,10 +118,12 @@ fn initialize_shard_for_test(ref setup: TeeTestSetup, crd_type: CRDType) {
         );
 
     snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
+
+    setup
 }
 
-/// Compute commitment the same way as sharding contract
-fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> u256 {
+/// Compute storage commitment: poseidon_hash(keys || values)
+fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> felt252 {
     let mut data: Array<felt252> = ArrayTrait::new();
 
     // First all keys
@@ -146,7 +138,23 @@ fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> u256 {
         data.append(value);
     }
 
-    poseidon_hash_span(data.span()).into()
+    poseidon_hash_span(data.span())
+}
+
+/// Compute full commitment hash matching StorageCommitment.verify() logic:
+/// poseidon_hash(storage_commitment, contract_address, nonce, global_state_root)
+fn compute_full_commitment(
+    storage_commitment: felt252,
+    contract_address: ContractAddress,
+    nonce: u64,
+    global_state_root: felt252,
+) -> felt252 {
+    let mut data: Array<felt252> = ArrayTrait::new();
+    data.append(storage_commitment);
+    data.append(contract_address.into());
+    data.append(nonce.into());
+    data.append(global_state_root);
+    poseidon_hash_span(data.span())
 }
 
 // =============================================================================
@@ -155,47 +163,41 @@ fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> u256 {
 
 #[test]
 fn test_storage_commitment_register_and_verify() {
-    let (address, _) = deploy_storage_commitment();
+    let address = deploy_storage_commitment();
     let dispatcher = IStorageCommitmentDispatcher { contract_address: address };
-    let game_contract: ContractAddress = 0x456.try_into().unwrap();
 
-    let commitment: u256 = 0x1234567890abcdef_u256;
+    let commitment: felt252 = 0x1234567890abcdef;
 
-    // Initially not verified (returns false for unregistered)
-    assert!(!dispatcher.is_verified(commitment, game_contract), "Should not be verified initially");
+    // Initially not registered
+    assert!(!dispatcher.is_registered(commitment), "Should not be registered initially");
 
-    // Register with game contract
-    dispatcher.register_verified_commitment(commitment, game_contract);
+    // Register the commitment
+    dispatcher.register_verified_commitment(commitment);
 
-    // Now verified - this also increments the nonce
-    assert!(dispatcher.is_verified(commitment, game_contract), "Should be verified after registration");
+    // Now registered
+    assert!(dispatcher.is_registered(commitment), "Should be registered after registration");
 }
 
 #[test]
 fn test_storage_commitment_double_register_is_idempotent() {
     // Test that registering the same commitment twice doesn't break anything
-    let (address, _) = deploy_storage_commitment();
+    let address = deploy_storage_commitment();
     let dispatcher = IStorageCommitmentDispatcher { contract_address: address };
-    let game_contract: ContractAddress = 0x456.try_into().unwrap();
 
-    let commitment: u256 = 0xcafe_u256;
+    let commitment: felt252 = 0xcafe;
 
     // First registration
-    dispatcher.register_verified_commitment(commitment, game_contract);
+    dispatcher.register_verified_commitment(commitment);
+    assert!(dispatcher.is_registered(commitment), "Should be registered after first registration");
 
-    // Verify (this also uses the commitment and increments nonce)
-    assert!(dispatcher.is_verified(commitment, game_contract), "Should be verified after first registration");
+    // Second registration of same commitment is idempotent
+    dispatcher.register_verified_commitment(commitment);
+    assert!(dispatcher.is_registered(commitment), "Should still be registered");
 
-    // Second registration of same commitment won't work - nonce has changed
-    // So we test with a new commitment instead
-    let commitment2: u256 = 0xbeef_u256;
-    dispatcher.register_verified_commitment(commitment2, game_contract);
-
-    // Re-registering same commitment should be idempotent (but won't verify due to nonce)
-    dispatcher.register_verified_commitment(commitment2, game_contract);
-
-    // Verify the new commitment
-    assert!(dispatcher.is_verified(commitment2, game_contract), "Should verify second commitment");
+    // A different commitment also works
+    let commitment2: felt252 = 0xbeef;
+    dispatcher.register_verified_commitment(commitment2);
+    assert!(dispatcher.is_registered(commitment2), "Second commitment should be registered");
 }
 
 // =============================================================================
@@ -211,7 +213,7 @@ fn test_compute_commitment_matches_expected() {
 
     // Expected: poseidon_hash([0x1, 0x2, 0x100, 0x200])
     let expected_data: Array<felt252> = array![0x1, 0x2, 0x100, 0x200];
-    let expected: u256 = poseidon_hash_span(expected_data.span()).into();
+    let expected: felt252 = poseidon_hash_span(expected_data.span());
 
     assert!(commitment == expected, "Commitment should match expected");
 }
@@ -224,30 +226,31 @@ fn test_compute_commitment_real_slot() {
 
     let storage_changes: Array<(felt252, felt252)> = array![(key, value)];
     let commitment = compute_commitment(storage_changes.span());
+    let commitment_u256: u256 = commitment.into();
 
     // Print for debugging comparison with Rust
-    println!("Real slot commitment: high={}, low={}", commitment.high, commitment.low);
+    println!("Real slot commitment: high={}, low={}", commitment_u256.high, commitment_u256.low);
 
     // Should match Rust-computed value
     // high=1865265751786403617475504350010045619, low=166035306803177291275924355265338905201
     let expected_high: u128 = 1865265751786403617475504350010045619;
     let expected_low: u128 = 166035306803177291275924355265338905201;
 
-    assert!(commitment.high == expected_high, "High part should match");
-    assert!(commitment.low == expected_low, "Low part should match");
+    assert!(commitment_u256.high == expected_high, "High part should match");
+    assert!(commitment_u256.low == expected_low, "Low part should match");
 }
 
 // =============================================================================
-// E2E Tests: update_contract_state_with_proof with registered commitment
+// E2E Tests: update_contract_state_tee with registered commitment
 // =============================================================================
 
 #[test]
 fn test_update_with_proof_success_when_commitment_registered() {
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -260,27 +263,30 @@ fn test_update_with_proof_success_when_commitment_registered() {
     let new_value: felt252 = 42;
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, new_value)];
 
-    // Compute the commitment that the sharding contract will compute
-    let commitment = compute_commitment(storage_changes.span());
-    println!("Computed commitment: high={}, low={}", commitment.high, commitment.low);
+    // Compute the full commitment matching what verify() expects
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
 
-    // Pre-register the commitment (simulating TEE verification flow)
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
-
-    // Note: We don't call is_verified here because it will consume the commitment.
-    // The sharding contract will call is_verified when update_contract_state_with_proof is called.
+    // Pre-register the full commitment (simulating TEE verification flow)
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
 
-    // Now call update_contract_state_with_proof
+    // Now call update_contract_state_tee
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
     // Verify counter was updated
@@ -289,13 +295,13 @@ fn test_update_with_proof_success_when_commitment_registered() {
 }
 
 #[test]
-#[should_panic(expected: ('Storage commitment not verified',))]
+#[should_panic(expected: ('Commitment not registered',))]
 fn test_update_with_proof_fails_when_commitment_not_registered() {
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -306,6 +312,7 @@ fn test_update_with_proof_fails_when_commitment_not_registered() {
 
     // Create storage changes - DO NOT register the commitment
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 99)];
+    let global_state_root: felt252 = 0xabc;
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -317,17 +324,19 @@ fn test_update_with_proof_fails_when_commitment_not_registered() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
 }
 
 #[test]
-#[should_panic(expected: ('Storage commitment not verified',))]
+#[should_panic(expected: ('Commitment not registered',))]
 fn test_update_with_proof_fails_when_wrong_commitment_registered() {
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -336,33 +345,36 @@ fn test_update_with_proof_fails_when_wrong_commitment_registered() {
         .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Register a WRONG commitment
-    let wrong_commitment: u256 = 0x123456_u256;
+    // Register a WRONG commitment (won't match what verify() computes)
+    let wrong_commitment: felt252 = 0x123456;
     setup.storage_commitment_dispatcher.register_verified_commitment(wrong_commitment);
 
     // Create storage changes with different values
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 77)];
+    let global_state_root: felt252 = 0xabc;
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
 
-    // This should FAIL because the computed commitment won't match the registered one
+    // This should FAIL because the computed full commitment won't match the registered one
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
 }
 
 #[test]
 fn test_update_with_proof_multiple_slots() {
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -375,21 +387,28 @@ fn test_update_with_proof_multiple_slots() {
     let other_slot: felt252 = 0x999;
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 55), (other_slot, 66)];
 
-    // Compute and register the commitment
-    let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
+    // Compute full commitment and register
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
 
-    // Call update_contract_state_with_proof
+    // Call update_contract_state_tee
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
     // Verify counter was updated (only the registered slot should be updated)
@@ -403,11 +422,11 @@ fn test_update_with_proof_multiple_slots() {
 
 #[test]
 fn test_update_with_proof_production_slot_value() {
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Use the production slot from the logs
@@ -415,11 +434,14 @@ fn test_update_with_proof_production_slot_value() {
     let value: felt252 = 0x0;
     let storage_changes: Array<(felt252, felt252)> = array![(key, value)];
 
-    // Compute and register the commitment
-    let commitment = compute_commitment(storage_changes.span());
-    println!("Production slot commitment: high={}, low={}", commitment.high, commitment.low);
-
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
+    // Compute full commitment and register
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -431,7 +453,9 @@ fn test_update_with_proof_production_slot_value() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
     // Storage was updated (even though slot doesn't match counter slot, the flow succeeded)
 }
@@ -447,7 +471,7 @@ fn test_commitment_with_zero_value() {
     let commitment = compute_commitment(storage_changes.span());
 
     // Should not be zero even though value is zero
-    assert!(commitment != 0_u256, "Commitment should not be zero even with zero value");
+    assert!(commitment != 0, "Commitment should not be zero even with zero value");
 }
 
 // =============================================================================
@@ -461,11 +485,11 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     // mechanism.
     // Even though the commitment remains in the registry after first use, trying to use
     // the same shard_id again will fail because the storage slot is no longer unlocked.
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard with SetLock (one-time use per shard)
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -474,12 +498,15 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
         .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Create storage changes
+    // Create storage changes and register full commitment
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
-
-    // Compute and register the commitment
-    let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -492,16 +519,27 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     // First update succeeds
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_address, storage_changes.clone(), shard_id,
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes.clone(), shard_id, global_state_root,
         );
 
-    // Second update with SAME shard_id and SAME commitment should FAIL
-    // This is the replay attack that gets prevented
+    // Second update with SAME shard_id should FAIL at the contract_component level
+    // because the storage slot is no longer locked (init_count == 0 after first update).
+    // We register a valid commitment so verify() passes — the lock check is what stops replay.
     let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 42)];
+    let global_state_root2: felt252 = 0xdef;
+    let storage_commitment2 = compute_commitment(storage_changes2.span());
+    let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment2 = compute_full_commitment(
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
+
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes2, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes2, shard_id, global_state_root2,
+        );
     // Should panic with 'Component: Storage is unlocked' before reaching this point
 }
 
@@ -510,11 +548,11 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
 fn test_replay_attack_prevented_same_shard_different_value() {
     // Even with a different value (different commitment), replay attack is still prevented
     // because the shard slot itself is locked after first use.
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -525,8 +563,13 @@ fn test_replay_attack_prevented_same_shard_different_value() {
 
     // First update with value 42
     let storage_changes1: Array<(felt252, felt252)> = array![(counter_slot, 42)];
-    let commitment1 = compute_commitment(storage_changes1.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment1);
+    let global_state_root1: felt252 = 0xabc;
+    let storage_commitment1 = compute_commitment(storage_changes1.span());
+    let nonce1 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment1 = compute_full_commitment(
+        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment1);
 
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
 
@@ -538,17 +581,26 @@ fn test_replay_attack_prevented_same_shard_different_value() {
     // First update succeeds
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes1, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes1, shard_id, global_state_root1,
+        );
 
-    // Second update with DIFFERENT value (different commitment) but SAME shard_id
-    // This should also fail because the shard slot is locked
+    // Second update with DIFFERENT value but SAME shard_id
+    // This should fail because the shard slot is locked
     let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 99)];
-    let commitment2 = compute_commitment(storage_changes2.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment2);
+    let global_state_root2: felt252 = 0xdef;
+    let storage_commitment2 = compute_commitment(storage_changes2.span());
+    let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment2 = compute_full_commitment(
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
 
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes2, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes2, shard_id, global_state_root2,
+        );
     // Should panic with 'Component: Storage is unlocked' before reaching this point
 }
 
@@ -556,11 +608,11 @@ fn test_replay_attack_prevented_same_shard_different_value() {
 fn test_nonce_based_replay_protection() {
     // Verify that nonce-based replay protection works:
     // After a commitment is used, the nonce increments, so old commitments can't be reused.
-    let mut setup = setup_tee_test();
+    let setup = setup_tee_test();
 
     // Initialize shard
-    initialize_shard_for_test(
-        ref setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
     // Get the storage slot for counter
@@ -573,10 +625,15 @@ fn test_nonce_based_replay_protection() {
     let initial_nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     assert!(initial_nonce == 0, "Initial nonce should be 0");
 
-    // Create storage changes
+    // Create storage changes and register full commitment
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
-    let commitment = compute_commitment(storage_changes.span());
-    setup.storage_commitment_dispatcher.register_verified_commitment(commitment, setup.test_contract_address);
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
     // Get shard_id
     let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
@@ -588,14 +645,13 @@ fn test_nonce_based_replay_protection() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(setup.test_contract_address, storage_changes, shard_id);
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
     // Check nonce has incremented
     let new_nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     assert!(new_nonce == 1, "Nonce should be incremented to 1 after use");
-
     // The same commitment can't be verified again (nonce mismatch)
-    // Note: is_verified will panic with 'Commitment already used' if we try
 }
-

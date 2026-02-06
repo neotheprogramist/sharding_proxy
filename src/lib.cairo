@@ -4,6 +4,7 @@ pub mod shard_output;
 pub mod sharding;
 pub mod storage_commitment;
 pub mod test_contract;
+pub mod utils;
 pub use config::{IConfig, IConfigDispatcher, IConfigDispatcherTrait};
 pub use contract_component::{
     IContractComponent, IContractComponentDispatcher, IContractComponentDispatcherTrait,

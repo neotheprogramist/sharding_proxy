@@ -192,7 +192,7 @@ fn test_update_state() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Counter is updated by snos_output
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -210,7 +210,7 @@ fn test_update_state() {
         setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     let events = setup.test_spy.get_events();
     println!("events: {:?}", events);
@@ -269,7 +269,7 @@ fn test_update_state_with_add_operation() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Verify that the counter was incremented by 5 (from SNOS output) to become 15
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -305,7 +305,7 @@ fn test_update_state_with_set_operation() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Verify that the counter was set to 5 (from SNOS output), replacing the previous value of 20
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -340,7 +340,7 @@ fn test_multiple_crd_operations() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Verify counter is 5 after update
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -366,7 +366,7 @@ fn test_multiple_crd_operations() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     // Verify counter is 10 after Add operation (5 + 5)
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -392,7 +392,7 @@ fn test_multiple_crd_operations() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 3);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 3);
 
     // Verify counter is 5 after Set operation (overwriting previous value)
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -648,7 +648,7 @@ fn test_too_many_setlock_updates() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
@@ -683,7 +683,7 @@ fn test_too_many_setlock_updates() {
 
     // Second update_state - should fail because the slot is already unlocked
     // This simulates trying to update more times than the init_count
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 }
 
 #[should_panic(expected: ('Component: Storage is unlocked',))]
@@ -710,7 +710,7 @@ fn test_too_many_add_updates() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
@@ -743,7 +743,7 @@ fn test_too_many_add_updates() {
 
     // Second update_state - should fail because the slot is already unlocked
     // This simulates trying to update more times than the init_count
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 }
 
 #[test]
@@ -788,7 +788,7 @@ fn test_two_times_init_add_and_two_updates() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
@@ -820,7 +820,7 @@ fn test_two_times_init_add_and_two_updates() {
     assert!(counter == 5, "Counter is not updated correctly");
 
     // Second update_state - should work
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     let expected_second_update_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
@@ -887,7 +887,7 @@ fn test_multiple_initializations_and_updates() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -901,7 +901,7 @@ fn test_multiple_initializations_and_updates() {
         );
 
     // Second update_state
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     // Verify counter is updated again
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -915,7 +915,7 @@ fn test_multiple_initializations_and_updates() {
         );
 
     // Third update_state
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 3);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 3);
 
     // Verify counter is updated again
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -951,7 +951,7 @@ fn lock_and_unlock_storage() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Counter is NOT updated by snos_output because it's locked
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -964,7 +964,7 @@ fn lock_and_unlock_storage() {
         setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 }
 
 #[test]
@@ -996,7 +996,7 @@ fn unlocking_lock_when_no_update() {
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 1);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     // Counter is NOT updated by snos_output because set was sent
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -1007,7 +1007,7 @@ fn unlocking_lock_when_no_update() {
         setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
-    setup.shard_dispatcher.update_contract_state(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 }
 
 #[should_panic(expected: ('L: Sharding already initialized',))]
@@ -1025,11 +1025,11 @@ fn two_times_lock() {
 }
 
 // =============================================================================
-// TEE-based update tests (update_contract_state_with_proof)
+// TEE-based update tests (update_contract_state_tee)
 // =============================================================================
 
 #[test]
-fn test_update_contract_state_with_proof_success() {
+fn test_update_contract_state_tee_success() {
     let mut setup = setup();
 
     // Initialize the shard with SetLock operation type
@@ -1056,8 +1056,8 @@ fn test_update_contract_state_with_proof_success() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        .update_contract_state_tee(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
         );
 
     // Verify counter was updated
@@ -1068,7 +1068,7 @@ fn test_update_contract_state_with_proof_success() {
 
 #[test]
 #[should_panic(expected: ('Sharding: Shard id not set',))]
-fn test_update_contract_state_with_proof_no_shard() {
+fn test_update_contract_state_tee_no_shard() {
     let setup = setup();
 
     let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
@@ -1080,14 +1080,14 @@ fn test_update_contract_state_with_proof_no_shard() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        .update_contract_state_tee(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
         );
 }
 
 #[test]
 #[should_panic(expected: ('Sharding: Shard id mismatch',))]
-fn test_update_contract_state_with_proof_wrong_shard_id() {
+fn test_update_contract_state_tee_wrong_shard_id() {
     let mut setup = setup();
 
     // Initialize with shard_id = 1
@@ -1104,14 +1104,17 @@ fn test_update_contract_state_with_proof_wrong_shard_id() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 2 // wrong shard_id!
+        .update_contract_state_tee(
+            setup.test_contract_dispatcher.contract_address,
+            storage_changes,
+            2,
+            0 // wrong shard_id!
         );
 }
 
 #[test]
 #[should_panic(expected: ('Sharding: No storage changes',))]
-fn test_update_contract_state_with_proof_empty_changes() {
+fn test_update_contract_state_tee_empty_changes() {
     let mut setup = setup();
 
     let mut setup = initialize_shard(
@@ -1127,13 +1130,13 @@ fn test_update_contract_state_with_proof_empty_changes() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        .update_contract_state_tee(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
         );
 }
 
 #[test]
-fn test_update_contract_state_with_proof_multiple_slots() {
+fn test_update_contract_state_tee_multiple_slots() {
     let mut setup = setup();
 
     // Initialize the shard with SetLock operation type
@@ -1159,8 +1162,8 @@ fn test_update_contract_state_with_proof_multiple_slots() {
     );
     setup
         .shard_dispatcher
-        .update_contract_state_with_proof(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1,
+        .update_contract_state_tee(
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
         );
 
     // Verify counter was updated

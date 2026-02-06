@@ -94,6 +94,7 @@ pub mod contract_component {
     use sharding_tests::sharding::{
         IShardingDispatcher, IShardingDispatcherTrait, StorageSlotWithContract,
     };
+    use sharding_tests::utils::safe_increment;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::storage_access::StorageAddress;
     use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
@@ -149,10 +150,7 @@ pub mod contract_component {
             let caller = get_caller_address();
             self.sharding_contract_address.write(sharding_contract_address);
             let current_shard_id = self.shard_id.read(caller);
-
-            // Safe increment via u256 to prevent overflow
-            let current_u256: u256 = current_shard_id.into();
-            let new_shard_id: felt252 = (current_u256 + 1).try_into().expect('Shard ID overflow');
+            let new_shard_id = safe_increment(current_shard_id, 'Shard ID overflow');
             self.shard_id.write(caller, new_shard_id);
 
             for crd_type in contract_slots_changes {
@@ -166,11 +164,7 @@ pub mod contract_component {
                     contract_address: crd_type.contract_address(), slot: crd_type.slot(),
                 };
 
-                // Safe increment via u256 to prevent overflow
-                let init_count_u256: u256 = init_count.into();
-                let new_init_count: felt252 = (init_count_u256 + 1)
-                    .try_into()
-                    .expect('Init count overflow');
+                let new_init_count = safe_increment(init_count, 'Init count overflow');
                 self.slots.write(crd_type.slot(), (crd_type, new_init_count));
                 self.shard_id_for_slot.write(slot, new_shard_id);
             }
@@ -195,31 +189,25 @@ pub mod contract_component {
 
             let contract_address = get_contract_address();
 
-            // Then process updates for other types
+            // Filter slots belonging to this shard_id
             for storage_change in storage_changes.span() {
                 let (storage_key, storage_value) = *storage_change;
-
-                // Create a StorageSlot to check if it's locked
                 let slot = StorageSlotWithContract {
                     contract_address: contract_address, slot: storage_key,
                 };
 
-                let slot_shard_id = self.shard_id_for_slot.read(slot);
-                let (crd_type, _) = self.slots.read(slot.slot);
-
-                if slot_shard_id == shard_id {
+                if self.shard_id_for_slot.read(slot) == shard_id {
                     slots_to_change.append((storage_key, storage_value));
                 }
             }
 
-            // Fail if no slots matched the shard_id (prevents silent no-op)
             assert(slots_to_change.len() != 0, Errors::NO_SLOTS_MATCHED);
 
             self.update_shard(slots_to_change.clone(), contract_address);
 
+            // Unlock slots: decrement init_count, reset Lock types to Set
             for slot_to_unlock in slots_to_change.span() {
                 let (storage_key, _) = *slot_to_unlock;
-                // Create a StorageSlot to unlock
                 let slot = StorageSlotWithContract {
                     contract_address: contract_address, slot: storage_key,
                 };
@@ -227,31 +215,23 @@ pub mod contract_component {
                 let (crd_type, init_count) = self.slots.read(slot.slot);
                 assert(init_count != 0, Errors::STORAGE_UNLOCKED);
 
-                let new_init_count = init_count - 1;
+                // Lock slots reserve the storage key during shard execution
+                // but always discard the shard value — reset fully on unlock.
+                let is_lock = match crd_type {
+                    CRDType::Lock => true,
+                    _ => false,
+                };
 
-                if new_init_count == 0 {
+                if is_lock {
                     self.slots.write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
                 } else {
-                    self.slots.write(slot.slot, (crd_type, new_init_count));
-                }
-            }
-
-            //Any Lock type slots are unlocked event if they are not updated
-            for storage_change in storage_changes.span() {
-                let (storage_key, _) = *storage_change;
-                let slot = StorageSlotWithContract {
-                    contract_address: contract_address, slot: storage_key,
-                };
-                let (crd_type, _) = self.slots.read(slot.slot);
-
-                if self.shard_id_for_slot.read(slot) == shard_id {
-                    match crd_type {
-                        CRDType::Lock => {
-                            self
-                                .slots
-                                .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
-                        },
-                        _ => {},
+                    let new_init_count = init_count - 1;
+                    if new_init_count == 0 {
+                        self
+                            .slots
+                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                    } else {
+                        self.slots.write(slot.slot, (crd_type, new_init_count));
                     }
                 }
             }
@@ -282,25 +262,22 @@ pub mod contract_component {
                 let (crd_type, _) = self.slots.read(key);
 
                 match crd_type {
-                    CRDType::SetLock => {
-                        storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                    },
+                    CRDType::SetLock |
                     CRDType::Set => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
                     },
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
-                        // Safe addition via u256 to prevent overflow
                         let current_u256: u256 = current_value.into();
                         let value_u256: u256 = value.into();
                         let sum = current_u256 + value_u256;
-                        // Convert back - panics if overflow beyond felt252 range
                         let new_value: felt252 = sum.try_into().expect('Arithmetic overflow');
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },
-                    CRDType::Lock => { // Do nothing
-                    },
+                    // Lock reserves the slot during shard execution but discards
+                    // the shard's value; the slot is unlocked in update_shard_state.
+                    CRDType::Lock => {},
                 }
             }
             self.emit(ContractComponentUpdated { storage_changes });
