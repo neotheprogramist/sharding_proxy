@@ -411,7 +411,7 @@ fn test_multiple_crd_operations() {
 }
 
 #[test]
-#[should_panic(expected: ('SL:Sharding already initialized',))]
+#[should_panic(expected: ('Slot locked by active shard',))]
 fn test_setlock_after_setlock_fails() {
     let mut setup = setup();
 
@@ -440,7 +440,7 @@ fn test_setlock_after_setlock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('SL:Sharding already initialized',))]
+#[should_panic(expected: ('Type change while slot active',))]
 fn test_setlock_after_add_fails() {
     let mut setup = setup();
 
@@ -471,7 +471,7 @@ fn test_setlock_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('S: Sharding already initialized',))]
+#[should_panic(expected: ('Slot locked by active shard',))]
 fn test_set_after_setlock_fails() {
     let mut setup = setup();
 
@@ -502,7 +502,7 @@ fn test_set_after_setlock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('S: Sharding already initialized',))]
+#[should_panic(expected: ('Type change while slot active',))]
 fn test_set_after_add_fails() {
     let mut setup = setup();
 
@@ -533,6 +533,7 @@ fn test_set_after_add_fails() {
 }
 
 #[test]
+#[should_panic(expected: ('Type change while slot active',))]
 fn test_add_after_set() {
     let mut setup = setup();
 
@@ -551,7 +552,7 @@ fn test_add_after_set() {
             setup.shard_dispatcher.contract_address, array![set_slots_changes].span(),
         );
 
-    // Second initialization with Add - should fail
+    // Second initialization with Add - should fail (type change while active)
     let add_slots_changes = setup
         .test_contract_dispatcher
         .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())));
@@ -1039,7 +1040,7 @@ fn unlocking_lock_when_no_update() {
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 }
 
-#[should_panic(expected: ('L: Sharding already initialized',))]
+#[should_panic(expected: ('Slot locked by active shard',))]
 #[test]
 fn two_times_lock() {
     let mut setup = setup();

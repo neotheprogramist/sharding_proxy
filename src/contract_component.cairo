@@ -14,49 +14,29 @@ type slot_value = felt252;
 
 pub trait CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType);
+    fn is_same_variant(self: CRDType, other: CRDType) -> bool;
     fn contract_address(self: CRDType) -> ContractAddress;
     fn slot(self: CRDType) -> slot_value;
 }
 
 impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType) {
-        let error_msg = match crd_type {
-            CRDType::Add => 'A: Sharding already initialized',
-            CRDType::SetLock => 'SL:Sharding already initialized',
-            CRDType::Set => 'S: Sharding already initialized',
-            CRDType::Lock => 'L: Sharding already initialized',
+        // When init_count == 0, current type is always Set (base state after unlock).
+        // Set can transition to any type — this is the only valid starting point.
+        let is_valid = match self {
+            CRDType::Set => true,
+            _ => false,
         };
+        assert(is_valid, 'Sharding already initialized');
+    }
 
-        match crd_type {
-            CRDType::Add => {
-                let is_valid = match self {
-                    CRDType::Add => true,
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::SetLock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Set => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Lock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
+    fn is_same_variant(self: CRDType, other: CRDType) -> bool {
+        match (self, other) {
+            (CRDType::Add(_), CRDType::Add(_)) => true,
+            (CRDType::SetLock(_), CRDType::SetLock(_)) => true,
+            (CRDType::Set(_), CRDType::Set(_)) => true,
+            (CRDType::Lock(_), CRDType::Lock(_)) => true,
+            _ => false,
         }
     }
     fn contract_address(self: CRDType) -> ContractAddress {
@@ -158,7 +138,21 @@ pub mod contract_component {
 
                 let (prev_crd_type, init_count) = self.slots.read(crd_type.slot());
 
-                prev_crd_type.verify_crd_type(crd_type);
+                if init_count != 0 {
+                    // Slot is active — SetLock and Lock are exclusive (no stacking)
+                    let is_locking = match prev_crd_type {
+                        CRDType::SetLock(_) | CRDType::Lock(_) => true,
+                        _ => false,
+                    };
+                    assert(!is_locking, 'Slot locked by active shard');
+                    // Set and Add allow same-type stacking only
+                    assert(
+                        prev_crd_type.is_same_variant(crd_type), 'Type change while slot active',
+                    );
+                } else {
+                    // Slot is free (init_count == 0) — check type transition from Set
+                    prev_crd_type.verify_crd_type(crd_type);
+                }
 
                 let slot = StorageSlotWithContract {
                     contract_address: crd_type.contract_address(), slot: crd_type.slot(),
