@@ -1,3 +1,12 @@
+//! Example game contract demonstrating sharding integration.
+//!
+//! This is a minimal reference implementation. To integrate your own game:
+//! 1. Embed `contract_component` in your contract's storage
+//! 2. Emit an event when a shard round finishes (like `GameFinished` here)
+//! 3. Call `initialize_shard()` with your storage slots + CRDT types
+//!
+//! See the main README for a full integration guide.
+
 use sharding_tests::contract_component::CRDType;
 
 #[starknet::interface]
@@ -8,28 +17,37 @@ pub trait ITestContract<TContractState> {
 
     fn set_counter(ref self: TContractState, value: felt252);
 
+    fn get_score(ref self: TContractState) -> felt252;
+
+    fn set_score(ref self: TContractState, value: felt252);
+
+    fn get_health(ref self: TContractState) -> felt252;
+
+    fn set_health(ref self: TContractState, value: felt252);
+
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
     fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> CRDType;
+
+    /// Returns a CRDType for a specific slot identified by its selector.
+    /// Use with selector!("counter"), selector!("score"), selector!("health").
+    fn get_storage_slot_for(
+        ref self: TContractState, slot_name: felt252, crd_type: CRDType,
+    ) -> CRDType;
 }
 
 #[starknet::contract]
 pub mod test_contract {
-    use core::poseidon::{PoseidonImpl};
-    use openzeppelin::access::ownable::{
-        OwnableComponent as ownable_cpt, OwnableComponent::InternalTrait as OwnableInternal,
-    };
-    use starknet::{ContractAddress, get_contract_address};
+    use core::poseidon::PoseidonImpl;
     use core::starknet::SyscallResultTrait;
-    use super::ITestContract;
-    use sharding_tests::contract_component::contract_component;
-    use sharding_tests::contract_component::CRDType;
+    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use sharding_tests::contract_component::{CRDType, contract_component};
+    use starknet::event::EventEmitter;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::syscalls::storage_read_syscall;
-
-    use starknet::{
-        get_caller_address, storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
-        event::EventEmitter,
-    };
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use super::ITestContract;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(
@@ -46,6 +64,8 @@ pub mod test_contract {
     struct Storage {
         owner: ContractAddress,
         counter: felt252,
+        score: felt252,
+        health: felt252,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
@@ -91,8 +111,11 @@ pub mod test_contract {
             let caller = get_caller_address();
             self.emit(Increment { caller });
 
-            let shard_id = self.contract_component.get_shard_id(get_contract_address());
-            if self.counter.read() == 3 {
+            // Emit GameFinished every 3 increments (3, 6, 9, ...)
+            // Convert to u256 for modulo operation (felt252 doesn't support %)
+            let counter_u256: u256 = self.counter.read().into();
+            if counter_u256 > 0 && counter_u256 % 3 == 0 {
+                let shard_id = self.contract_component.get_shard_id(get_contract_address());
                 self.emit(GameFinished { caller, shard_id });
             }
         }
@@ -104,6 +127,22 @@ pub mod test_contract {
 
         fn set_counter(ref self: ContractState, value: felt252) {
             self.counter.write(value);
+        }
+
+        fn get_score(ref self: ContractState) -> felt252 {
+            self.score.read()
+        }
+
+        fn set_score(ref self: ContractState, value: felt252) {
+            self.score.write(value);
+        }
+
+        fn get_health(ref self: ContractState) -> felt252 {
+            self.health.read()
+        }
+
+        fn set_health(ref self: ContractState, value: felt252) {
+            self.health.write(value);
         }
 
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
@@ -118,6 +157,18 @@ pub mod test_contract {
                 ),
                 CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
                 CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
+            }
+        }
+
+        fn get_storage_slot_for(
+            ref self: ContractState, slot_name: felt252, crd_type: CRDType,
+        ) -> CRDType {
+            let addr = get_contract_address();
+            match crd_type {
+                CRDType::Add => CRDType::Add((addr, slot_name)),
+                CRDType::SetLock => CRDType::SetLock((addr, slot_name)),
+                CRDType::Set => CRDType::Set((addr, slot_name)),
+                CRDType::Lock => CRDType::Lock((addr, slot_name)),
             }
         }
     }

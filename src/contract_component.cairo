@@ -1,4 +1,4 @@
-use starknet::{ContractAddress};
+use starknet::ContractAddress;
 
 #[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
@@ -14,49 +14,29 @@ type slot_value = felt252;
 
 pub trait CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType);
+    fn is_same_variant(self: CRDType, other: CRDType) -> bool;
     fn contract_address(self: CRDType) -> ContractAddress;
     fn slot(self: CRDType) -> slot_value;
 }
 
 impl CRDTypeImpl of CRDTypeTrait {
     fn verify_crd_type(self: CRDType, crd_type: CRDType) {
-        let error_msg = match crd_type {
-            CRDType::Add => 'A: Sharding already initialized',
-            CRDType::SetLock => 'SL:Sharding already initialized',
-            CRDType::Set => 'S: Sharding already initialized',
-            CRDType::Lock => 'L: Sharding already initialized',
+        // When init_count == 0, current type is always Set (base state after unlock).
+        // Set can transition to any type — this is the only valid starting point.
+        let is_valid = match self {
+            CRDType::Set => true,
+            _ => false,
         };
+        assert(is_valid, 'Sharding already initialized');
+    }
 
-        match crd_type {
-            CRDType::Add => {
-                let is_valid = match self {
-                    CRDType::Add => true,
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::SetLock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Set => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
-            CRDType::Lock => {
-                let is_valid = match self {
-                    CRDType::Set => true,
-                    _ => false,
-                };
-                assert(is_valid, error_msg);
-            },
+    fn is_same_variant(self: CRDType, other: CRDType) -> bool {
+        match (self, other) {
+            (CRDType::Add(_), CRDType::Add(_)) => true,
+            (CRDType::SetLock(_), CRDType::SetLock(_)) => true,
+            (CRDType::Set(_), CRDType::Set(_)) => true,
+            (CRDType::Lock(_), CRDType::Lock(_)) => true,
+            _ => false,
         }
     }
     fn contract_address(self: CRDType) -> ContractAddress {
@@ -89,20 +69,17 @@ pub trait IContractComponent<TContractState> {
 
 #[starknet::component]
 pub mod contract_component {
-    use starknet::{
-        get_caller_address, ContractAddress, get_contract_address,
-        storage::{StorageMapReadAccess, StorageMapWriteAccess, Map},
-    };
     use core::starknet::SyscallResultTrait;
-    use starknet::syscalls::storage_write_syscall;
-    use starknet::syscalls::storage_read_syscall;
-    use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
-    use sharding_tests::sharding::StorageSlotWithContract;
-    use core::starknet::storage::StoragePointerWriteAccess;
+    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use sharding_tests::sharding::{
+        IShardingDispatcher, IShardingDispatcherTrait, StorageSlotWithContract,
+    };
+    use sharding_tests::utils::safe_increment;
+    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::storage_access::StorageAddress;
-    use super::CRDType;
-    use super::CRDTypeTrait;
-    use super::slot_value;
+    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use super::{CRDType, CRDTypeTrait, slot_value};
 
     type shard_id = felt252;
     type init_count = felt252;
@@ -138,6 +115,7 @@ pub mod contract_component {
         pub const NOT_INITIALIZED: felt252 = 'Component: Not initialized';
         pub const STORAGE_UNLOCKED: felt252 = 'Component: Storage is unlocked';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
+        pub const NO_SLOTS_MATCHED: felt252 = 'Component: No slots matched';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -152,8 +130,7 @@ pub mod contract_component {
             let caller = get_caller_address();
             self.sharding_contract_address.write(sharding_contract_address);
             let current_shard_id = self.shard_id.read(caller);
-
-            let new_shard_id = current_shard_id + 1;
+            let new_shard_id = safe_increment(current_shard_id, 'Shard ID overflow');
             self.shard_id.write(caller, new_shard_id);
 
             for crd_type in contract_slots_changes {
@@ -161,15 +138,30 @@ pub mod contract_component {
 
                 let (prev_crd_type, init_count) = self.slots.read(crd_type.slot());
 
-                prev_crd_type.verify_crd_type(crd_type);
+                if init_count != 0 {
+                    // Slot is active — SetLock and Lock are exclusive (no stacking)
+                    let is_locking = match prev_crd_type {
+                        CRDType::SetLock(_) | CRDType::Lock(_) => true,
+                        _ => false,
+                    };
+                    assert(!is_locking, 'Slot locked by active shard');
+                    // Set and Add allow same-type stacking only
+                    assert(
+                        prev_crd_type.is_same_variant(crd_type), 'Type change while slot active',
+                    );
+                } else {
+                    // Slot is free (init_count == 0) — check type transition from Set
+                    prev_crd_type.verify_crd_type(crd_type);
+                }
 
                 let slot = StorageSlotWithContract {
                     contract_address: crd_type.contract_address(), slot: crd_type.slot(),
                 };
 
-                self.slots.write(crd_type.slot(), (crd_type, init_count + 1));
+                let new_init_count = safe_increment(init_count, 'Init count overflow');
+                self.slots.write(crd_type.slot(), (crd_type, new_init_count));
                 self.shard_id_for_slot.write(slot, new_shard_id);
-            };
+            }
 
             // Emit initialization event
             let sharding_dispatcher = IShardingDispatcher {
@@ -183,33 +175,33 @@ pub mod contract_component {
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
         ) {
+            let caller = get_caller_address();
+            assert(caller == self.sharding_contract_address.read(), 'Unauthorized caller');
+
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
             let mut slots_to_change = ArrayTrait::new();
 
             let contract_address = get_contract_address();
 
-            // Then process updates for other types
+            // Filter slots belonging to this shard_id
             for storage_change in storage_changes.span() {
                 let (storage_key, storage_value) = *storage_change;
-
-                // Create a StorageSlot to check if it's locked
                 let slot = StorageSlotWithContract {
                     contract_address: contract_address, slot: storage_key,
                 };
 
-                let slot_shard_id = self.shard_id_for_slot.read(slot);
-                let (crd_type, _) = self.slots.read(slot.slot);
-
-                if slot_shard_id == shard_id {
+                if self.shard_id_for_slot.read(slot) == shard_id {
                     slots_to_change.append((storage_key, storage_value));
                 }
-            };
+            }
+
+            assert(slots_to_change.len() != 0, Errors::NO_SLOTS_MATCHED);
 
             self.update_shard(slots_to_change.clone(), contract_address);
 
+            // Unlock slots: decrement init_count, reset Lock types to Set
             for slot_to_unlock in slots_to_change.span() {
                 let (storage_key, _) = *slot_to_unlock;
-                // Create a StorageSlot to unlock
                 let slot = StorageSlotWithContract {
                     contract_address: contract_address, slot: storage_key,
                 };
@@ -217,34 +209,26 @@ pub mod contract_component {
                 let (crd_type, init_count) = self.slots.read(slot.slot);
                 assert(init_count != 0, Errors::STORAGE_UNLOCKED);
 
-                let new_init_count = init_count - 1;
+                // Lock slots reserve the storage key during shard execution
+                // but always discard the shard value — reset fully on unlock.
+                let is_lock = match crd_type {
+                    CRDType::Lock => true,
+                    _ => false,
+                };
 
-                if new_init_count == 0 {
+                if is_lock {
                     self.slots.write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
                 } else {
-                    self.slots.write(slot.slot, (crd_type, new_init_count));
-                }
-            };
-
-            //Any Lock type slots are unlocked event if they are not updated
-            for storage_change in storage_changes.span() {
-                let (storage_key, _) = *storage_change;
-                let slot = StorageSlotWithContract {
-                    contract_address: contract_address, slot: storage_key,
-                };
-                let (crd_type, _) = self.slots.read(slot.slot);
-
-                if self.shard_id_for_slot.read(slot) == shard_id {
-                    match crd_type {
-                        CRDType::Lock => {
-                            self
-                                .slots
-                                .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
-                        },
-                        _ => {},
+                    let new_init_count = init_count - 1;
+                    if new_init_count == 0 {
+                        self
+                            .slots
+                            .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                    } else {
+                        self.slots.write(slot.slot, (crd_type, new_init_count));
                     }
                 }
-            };
+            }
 
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
         }
@@ -272,22 +256,24 @@ pub mod contract_component {
                 let (crd_type, _) = self.slots.read(key);
 
                 match crd_type {
-                    CRDType::SetLock => {
-                        storage_write_syscall(0, storage_address, value).unwrap_syscall();
-                    },
+                    CRDType::SetLock |
                     CRDType::Set => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
                     },
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
-                        let new_value = current_value + value;
+                        let current_u256: u256 = current_value.into();
+                        let value_u256: u256 = value.into();
+                        let sum = current_u256 + value_u256;
+                        let new_value: felt252 = sum.try_into().expect('Arithmetic overflow');
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },
-                    CRDType::Lock => { // Do nothing
-                    },
+                    // Lock reserves the slot during shard execution but discards
+                    // the shard's value; the slot is unlocked in update_shard_state.
+                    CRDType::Lock => {},
                 }
-            };
+            }
             self.emit(ContractComponentUpdated { storage_changes });
         }
     }

@@ -21,7 +21,7 @@ CALLDATA="$OUTPUT_LENGTH $SNOS_OUTPUT $SHARD_ID"
 
 sncast invoke \
     --contract-address "$SHARDING_CONTRACT_ADDRESS" \
-    --function "update_contract_state" \
+    --function "update_contract_state_snos" \
     --fee-token eth \
     --calldata $CALLDATA
     

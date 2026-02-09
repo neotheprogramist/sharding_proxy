@@ -125,6 +125,7 @@ version = "0.1.0"
 dependencies = [
  "openzeppelin",
  "snforge_std",
+ "storage_commitment",
 ]
 
 [[package]]
@@ -141,3 +142,8 @@ checksum = "sha256:a04b0bf731f02307506dad368713099e701565edd9b98b044ca54b932c29e
 dependencies = [
  "snforge_scarb_plugin",
 ]
+
+[[package]]
+name = "storage_commitment"
+version = "0.1.0"
+source = "git+https://github.com/feltroidprime/katana-tee.git?branch=feature%2Fsharding#4e595bf392d41a390e9ffdbb2aeb3dfd3e3b6d0a"
