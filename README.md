@@ -1,149 +1,85 @@
 # Starknet Sharding System
 
-A modular system for implementing sharding in Starknet contracts, allowing for efficient state management and updates across multiple contracts.
+A modular system for implementing sharding in Starknet contracts, enabling efficient state management and updates via TEE attestation or SNOS proofs.
 
 ## Overview
 
 This project implements a sharding mechanism that enables contracts to:
 
-- Register specific storage slots with a central sharding proxy contract
-- Process state updates from Starknet OS in a controlled manner
-- Update only specific storage slots that belong to a particular shard
-
-By using this approach, contracts can start shard by initializing proxy and settle shard by providing an output from starknet os.
+- Register specific storage slots with a central sharding contract
+- Define CRDT-like conflict resolution types per slot (Add, Set, SetLock, Lock)
+- Process state updates via TEE-attested storage commitments or SNOS output
+- Stack multiple shards on the same slot (for Set and Add types)
 
 ## Architecture
 
 ### Core Components
 
-1. **Sharding Proxy Contract** (`src/sharding.cairo`)
-
-   - Central contract that manages shards and processes state updates
-   - Maintains a registry of storage slots and their associated shards
-   - Routes storage updates to the appropriate contracts
+1. **Sharding Contract** (`src/sharding.cairo`)
+   - Central coordinator that manages shards and processes state updates
+   - Two update paths: `update_contract_state_tee` (TEE) and `update_contract_state_snos` (SNOS)
+   - Verifies storage commitments via StorageCommitment registry (TEE path)
+   - Routes storage updates to the appropriate game contracts
 
 2. **Contract Component** (`src/contract_component.cairo`)
+   - Embeddable component for making contracts sharding-capable
+   - Manages slot registration with CRD types and init_count tracking
+   - Applies CRDT logic on update: Set/SetLock overwrite, Add accumulates, Lock reserves
+   - Handles slot locking/unlocking lifecycle
 
-   - Embeddable component for making contracts "sharding-capable"
-   - Handles registration with the sharding system
-   - Processes storage updates from the sharding contract
+3. **StorageCommitment** (external, from `katana-tee`)
+   - Nonce-based commitment registry for replay protection
+   - Verifies `hash(storage_commitment, contract_address, nonce, global_state_root)`
 
-3. **Test Contract** (`src/test_contract.cairo`)
+4. **Config Component** (`src/config.cairo`)
+   - Owner/operator access control for the sharding contract
 
-   - Example implementation using the sharding system
-   - Simple example with counter that is incremented
-   - Emits end-event when shard is finished
+5. **Test Contract** (`src/test_contract.cairo`)
+   - Example game contract with `counter`, `score`, `health` storage slots
+   - Helpers: `get_storage_slots()`, `get_storage_slot_for(selector, crd_type)`
 
-4. **SNOS Output Parser** (`src/snos_output.cairo`)
-   - Utilities for parsing Starknet OS output
-   - Extracts state changes for processing by the sharding system
+### CRD Types
+
+| Type | Behavior | Stackable | Description |
+|------|----------|-----------|-------------|
+| `Set` | Last-write-wins | Yes (same type) | Overwrites slot value. Multiple shards can stack. |
+| `Add` | Commutative sum | Yes (same type) | Adds shard value to current value. Multiple shards can stack. |
+| `SetLock` | Exclusive overwrite | No | Overwrites slot value. Slot is locked during shard execution. |
+| `Lock` | Reserve only | No | Reserves the slot during shard but discards the shard value. |
+
+**Transition rules:**
+- Slot free (`init_count = 0`): any type can be initialized (base state is always `Set`)
+- Slot active + SetLock/Lock: **BLOCKED** (exclusive, no stacking allowed)
+- Slot active + Set/Add: same-type stacking only (`init_count++`), type change blocked
+- After unlock: slot resets to `Set` with `init_count = 0`
 
 ## How It Works
 
-1. **Initialization**
+### TEE Update Flow
 
-   - Test contract initializes sharding proxy by calling initialize_shard function with slots to be changed
-   - Proxy contract registers specific storage slots and a caller-contract address
-   - Each contract is assigned a unique shard ID
+1. Game contract calls `initialize_shard()` on its ContractComponent with slot CRD types
+2. ContractComponent calls `initialize_sharding()` on the Sharding contract
+3. Sharding stores shard_id and registered slots
+4. TEE executes the shard off-chain
+5. TEE registers a storage commitment hash via `StorageCommitment.register_verified_commitment()`
+6. Operator calls `update_contract_state_tee()` on the Sharding contract
+7. Sharding verifies the commitment against StorageCommitment registry
+8. Sharding forwards changes to ContractComponent via `update_shard_state()`
+9. ContractComponent applies CRD logic (Set/Add/SetLock/Lock) and unlocks slots
 
-2. **State Updates**
+### SNOS Update Flow
 
-   - The sharding contract receives state updates from Starknet OS
-   - It filters updates based on registered storage slots, shard ID and a caller-contract address
-   - Only relevant changes are forwarded to the appropriate contracts
-
-3. **Storage Management**
-   - Contracts only process updates for storage slots they've registered
-   - Shard ID is checked to ensure that only authorized changes are applied
-   - Only changes from the caller-contract address are applied
-   - This prevents unauthorized modifications to contract storage
-
-## Usage
-
-### Environment
-
-To test the sharding system, you need to have a local network running. You can download dojo-katana network from [here](https://github.com/dojoengine/dojo.git) and run it with `katana init` command to setup the network, set chain id to sharding. And `katana --chain sharding --block-time 5000 --db-dir katana.db` to run the network with name `sharding` and block time 5 seconds and database in `katana.db` directory.
-
-```
-katana init
-> Id sharding
-> Settlement chain Sepolia
-> Account <sepolia account address>
-> Private key <sepolia account private key>
-> Deploy settlement contract? Yes
-✓ Deployment successful (0x7a1444f2fba2175328d5d381b19f163772f70d8912d6d54f2f2a5ae48b334b3) at block #639113
-> Add Slot paymaster account? No
-```
-
-Next you need to deploy the contracts to the network with the scripts below to see how it works.
-
-### Setup and Deployment
-
-#### Deploy the sharding contract
-
-Deploy the sharding contract, you need to change the class hash to the declared one.
-Constructor calldata is one felt252 value:
-
-- owner
-
-#### To setup the test contract with the sharding system
-
-```bash
-./scripts/setup.sh
-```
-
-#### Initialize the test contract with the sharding system
-
-To initialize shard you need to provide StorageSlotWithContract array which contains contract address, slot and crd_type for each slot you want to change.
-
-```bash
-./scripts/invoke_initialize_shard.sh
-```
-
-### Updating State
-
-#### Process a state update
-
-You need to provide snos_output.txt file with state changes and a sharding contract address.
-
-```bash
-./scripts/invoke_update_shard.sh
-```
-
-### Interacting with Contracts
-
-#### Increment the counter in the test contract
-
-Increment the counter in the test contract, provide the test contract address.
-
-```bash
-./scripts/invoke_increment.sh
-```
-
-#### Read the current counter value
-
-Read the current counter value, provide the test contract address.
-
-```bash
-./scripts/call_get_counter.sh
-```
-
-## Testing
-
-Run the tests to verify the sharding functionality:
-
-```bash
-scarb test
-```
-
-The main test file (`tests/sharding_test.cairo`) demonstrates how the sharding system processes state updates and ensures that only authorized changes are applied.
+Similar to TEE but uses SNOS output instead of storage commitments:
+1. Initialize shard (same as above)
+2. Operator calls `update_contract_state_snos()` with serialized SNOS output
+3. Sharding parses output and forwards changes to registered contracts
 
 ## Development
 
 ### Prerequisites
 
-- Scarb 2.9.2
-- Starknet Foundry 0.34.0
+- Scarb 2.15.0
+- Starknet Foundry 0.55.0
 
 ### Building
 
@@ -151,10 +87,31 @@ The main test file (`tests/sharding_test.cairo`) demonstrates how the sharding s
 scarb build
 ```
 
-### Example of snos_output.txt file:
+### Testing
 
-first element 0x2d is length of the output, then each element is a felt252 value of snos output, last element 0x3 is shard id.
+```bash
+scarb test --all-features
+```
 
+### Formatting
+
+```bash
+scarb fmt --check
 ```
-0x2d 0x1 0x2 0x3 0x600c7a82c53a4bceb845f1a691eb5ff0da03cf96dfca7856064e766e15d90d3 0x10d8554dcb7a9bc71a67716e12eacb893be7fbb6ed474708a343685fd837ed5 0x9 0xa 0x20d7e8bcc51950f49f5d6c935e7ddf23ab3612303da87809b4481efe62b6626 0x77d2b1d9bba4bd7bd817419c46b2a248f68dce4c82d57e87d8adb3e8d20f7d3 0x0 0x5b13f57af91266140394eaca3080289e3e8881564e71d52f04030c5a35e4d7b 0x0 0x1 0x0 0x0 0x4 0x1 0x6 0x0 0x0 0x0 0x0 0x91d4543643690ba5de910936502f11a7e153c9cefa606060a334b505ed5e58 0x1f401c745d3dba9b9da11921d1fb006c96f571e9039a0ece3f3b0dc14f04c3d 0x28000000000000003402 0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2 0x7dc7899aa655b0aae51eadff6d801a58e97dd99cf4666ee59e704249e51adf2 0x2e7442625bab778683501c0eadbc1ea17b3535da040a12ac7d281066e915eea 0xa 0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac 0xa2475bc66197c751d854ea8c39c6ad9781eb284103bcd856b58e6b500078ac 0x67840c21d0d3cba9ed504d8867dffe868f3d43708cfc0d7ed7980b511850070 0x21e19e0c9bab23ec53e 0x21e19e0c9bab23e9b86 0x7b62949c85c6af8a50c11c22927f9302f7a2e40bc93b4c988415915b0f97f09 0x13ac2 0x1647a 0x67afb2f65a238d3a5b9992c98e669753cd49d616a9740bb8fa92f11e3775762 0x6 0x48675ee1d853f408203c04aa712c255b151e1b07ce5dd05058a68b69f21b765 0x48675ee1d853f408203c04aa712c255b151e1b07ce5dd05058a68b69f21b765 0x7ebcc807b5c7e19f245995a55aed6f46f5f582f476a886b91b834b0ddf5854 0x0 0x3 0x0 0x3 0x1
-```
+
+## Deployment
+
+### Deploy the sharding contract
+
+Constructor calldata: `(owner_address, storage_commitment_registry_address)`
+
+### Initialize a game contract
+
+Call `initialize_shard()` on the game contract's ContractComponent with:
+- `sharding_contract_address` - address of the deployed sharding contract
+- `contract_slots_changes` - array of `CRDType` values specifying slots and their conflict resolution types
+
+### Update state (TEE path)
+
+1. Register commitment via `StorageCommitment.register_verified_commitment(hash)`
+2. Call `update_contract_state_tee(contract_address, storage_changes, shard_id, global_state_root)` on the sharding contract
