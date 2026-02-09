@@ -17,9 +17,23 @@ pub trait ITestContract<TContractState> {
 
     fn set_counter(ref self: TContractState, value: felt252);
 
+    fn get_score(ref self: TContractState) -> felt252;
+
+    fn set_score(ref self: TContractState, value: felt252);
+
+    fn get_health(ref self: TContractState) -> felt252;
+
+    fn set_health(ref self: TContractState, value: felt252);
+
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
     fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> CRDType;
+
+    /// Returns a CRDType for a specific slot identified by its selector.
+    /// Use with selector!("counter"), selector!("score"), selector!("health").
+    fn get_storage_slot_for(
+        ref self: TContractState, slot_name: felt252, crd_type: CRDType,
+    ) -> CRDType;
 }
 
 #[starknet::contract]
@@ -50,6 +64,8 @@ pub mod test_contract {
     struct Storage {
         owner: ContractAddress,
         counter: felt252,
+        score: felt252,
+        health: felt252,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
@@ -113,6 +129,22 @@ pub mod test_contract {
             self.counter.write(value);
         }
 
+        fn get_score(ref self: ContractState) -> felt252 {
+            self.score.read()
+        }
+
+        fn set_score(ref self: ContractState, value: felt252) {
+            self.score.write(value);
+        }
+
+        fn get_health(ref self: ContractState) -> felt252 {
+            self.health.read()
+        }
+
+        fn set_health(ref self: ContractState, value: felt252) {
+            self.health.write(value);
+        }
+
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
         }
@@ -125,6 +157,18 @@ pub mod test_contract {
                 ),
                 CRDType::Set => CRDType::Set((get_contract_address(), selector!("counter"))),
                 CRDType::Lock => CRDType::Lock((get_contract_address(), selector!("counter"))),
+            }
+        }
+
+        fn get_storage_slot_for(
+            ref self: ContractState, slot_name: felt252, crd_type: CRDType,
+        ) -> CRDType {
+            let addr = get_contract_address();
+            match crd_type {
+                CRDType::Add => CRDType::Add((addr, slot_name)),
+                CRDType::SetLock => CRDType::SetLock((addr, slot_name)),
+                CRDType::Set => CRDType::Set((addr, slot_name)),
+                CRDType::Lock => CRDType::Lock((addr, slot_name)),
             }
         }
     }

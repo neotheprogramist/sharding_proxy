@@ -213,37 +213,40 @@ pub mod sharding {
         ) {
             self.config.assert_only_owner_or_operator();
 
-            if self.initializer_contract_address.read() == contract_address {
-                // Verify shard_id matches
-                let contract_shard_id = self.shard_id.read(contract_address);
-                assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-                assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+            assert(
+                self.initializer_contract_address.read() == contract_address,
+                'Contract not initialized',
+            );
 
-                // Verify we have storage changes
-                assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+            // Verify shard_id matches
+            let contract_shard_id = self.shard_id.read(contract_address);
+            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
 
-                let storage_commitment_registry = IStorageCommitmentDispatcher {
-                    contract_address: self.storage_commitment_registry.read(),
-                };
+            // Verify we have storage changes
+            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
-                // Compute storage_commitment = hash(keys || values)
-                let storage_commitment = self.compute_storage_commitment(storage_changes.span());
+            let storage_commitment_registry = IStorageCommitmentDispatcher {
+                contract_address: self.storage_commitment_registry.read(),
+            };
 
-                // Verify: recomputes full hash with stored nonce and checks registration
-                assert(
-                    storage_commitment_registry
-                        .verify(storage_commitment, contract_address, global_state_root),
-                    'Storage commitment not verified',
-                );
+            // Compute storage_commitment = hash(keys || values)
+            let storage_commitment = self.compute_storage_commitment(storage_changes.span());
 
-                self.emit(StorageCommitmentVerified { storage_commitment });
+            // Verify: recomputes full hash with stored nonce and checks registration
+            assert(
+                storage_commitment_registry
+                    .verify(storage_commitment, contract_address, global_state_root),
+                'Storage commitment not verified',
+            );
 
-                // Forward to the contract component
-                let contract_dispatcher = IContractComponentDispatcher {
-                    contract_address: contract_address,
-                };
-                contract_dispatcher.update_shard_state(storage_changes, shard_id);
-            }
+            self.emit(StorageCommitmentVerified { storage_commitment });
+
+            // Forward to the contract component
+            let contract_dispatcher = IContractComponentDispatcher {
+                contract_address: contract_address,
+            };
+            contract_dispatcher.update_shard_state(storage_changes, shard_id);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
