@@ -14,16 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: asdf-vm/actions/install@v3.0.2
-      - run: scarb fmt --check 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: asdf-vm/actions/install@v3.0.2
-      - run: scarb test --all-features 
+      - run: scarb fmt --check
+
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: asdf-vm/actions/install@v3.0.2
-      - run: scarb build 
+        with:
+          tool_versions: |
+            scarb 2.15.0
+            starknet-foundry 0.55.0
+      - run: scarb build
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: asdf-vm/actions/install@v3.0.2
+        with:
+          tool_versions: |
+            scarb 2.15.0
+            starknet-foundry 0.55.0
+      - run: scarb test --all-features

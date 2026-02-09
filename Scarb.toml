@@ -9,7 +9,7 @@ edition = "2024_07"
 starknet = "2.9.2"
 openzeppelin = "0.20.0"
 snforge_std = "0.55.0"
-storage_commitment = { path = "../../katana-tee/contracts/storage_commitment" }
+storage_commitment = { git = "https://github.com/feltroidprime/katana-tee.git", branch = "feature/sharding" }
 
 [dev-dependencies]
 snforge_std = "0.55.0"
