@@ -302,7 +302,10 @@ pub mod sharding {
         ) {
             self.config.assert_only_owner_or_operator();
             assert(storage_slots.len() != 0, 'No storage slots provided');
-            self.emit(ShardingRequested { game_contract, storage_slots, settlement_event_selector });
+            self
+                .emit(
+                    ShardingRequested { game_contract, storage_slots, settlement_event_selector },
+                );
         }
     }
 

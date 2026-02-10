@@ -91,6 +91,9 @@ pub mod contract_component {
         sharding_contract_address: ContractAddress,
         shard_id: Map<ContractAddress, shard_id>,
         shard_id_for_slot: Map<StorageSlotWithContract, shard_id>,
+        /// Snapshot of Add slot values at initialization time.
+        /// Used to compute delta = (shard_value - initial) during settlement.
+        initial_add_values: Map<slot_value, felt252>,
     }
 
     #[event]
@@ -162,6 +165,14 @@ pub mod contract_component {
                 let new_init_count = safe_increment(init_count, 'Init count overflow');
                 self.slots.write(crd_type.slot(), (crd_type, new_init_count));
                 self.shard_id_for_slot.write(slot, new_shard_id);
+
+                // For Add CRDTs, snapshot the current value so we can compute
+                // delta = (shard_value - initial) during settlement.
+                if let CRDType::Add(_) = crd_type {
+                    let storage_address: StorageAddress = crd_type.slot().try_into().unwrap();
+                    let current = storage_read_syscall(0, storage_address).unwrap_syscall();
+                    self.initial_add_values.write(crd_type.slot(), current);
+                }
             }
 
             // Emit initialization event
@@ -225,6 +236,9 @@ pub mod contract_component {
                         self
                             .slots
                             .write(slot.slot, (CRDType::Set((contract_address, slot.slot)), 0));
+                        if let CRDType::Add(_) = crd_type {
+                            self.initial_add_values.write(slot.slot, 0);
+                        }
                     } else {
                         self.slots.write(slot.slot, (crd_type, new_init_count));
                     }
@@ -253,7 +267,7 @@ pub mod contract_component {
                     continue;
                 }
 
-                let (_, init_count) = self.slots.read(slot_key);
+                let (crd_type, init_count) = self.slots.read(slot_key);
                 if init_count == 0 {
                     continue;
                 }
@@ -262,9 +276,11 @@ pub mod contract_component {
                 if new_init_count == 0 {
                     // Fully unlocked — reset to base Set type
                     self.slots.write(slot_key, (CRDType::Set((contract_address, slot_key)), 0));
+                    if let CRDType::Add(_) = crd_type {
+                        self.initial_add_values.write(slot_key, 0);
+                    }
                 } else {
                     // Other shards still active on this slot — just decrement
-                    let (crd_type, _) = self.slots.read(slot_key);
                     self.slots.write(slot_key, (crd_type, new_init_count));
                 }
             }
@@ -300,9 +316,14 @@ pub mod contract_component {
                     CRDType::Add => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
+                        let initial_value = self.initial_add_values.read(key);
+                        // value is the absolute shard state; compute delta vs fork snapshot
                         let current_u256: u256 = current_value.into();
-                        let value_u256: u256 = value.into();
-                        let sum = current_u256 + value_u256;
+                        let shard_u256: u256 = value.into();
+                        let initial_u256: u256 = initial_value.into();
+                        assert(shard_u256 >= initial_u256, 'Add delta underflow');
+                        let delta = shard_u256 - initial_u256;
+                        let sum = current_u256 + delta;
                         let new_value: felt252 = sum.try_into().expect('Arithmetic overflow');
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },

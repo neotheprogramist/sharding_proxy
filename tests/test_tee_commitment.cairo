@@ -655,3 +655,163 @@ fn test_nonce_based_replay_protection() {
     assert!(new_nonce == 1, "Nonce should be incremented to 1 after use");
     // The same commitment can't be verified again (nonce mismatch)
 }
+
+// =============================================================================
+// Add CRDT delta tests
+// =============================================================================
+
+#[test]
+fn test_add_crdt_computes_delta_not_absolute() {
+    // Scenario: counter starts at 10 before shard. During shard (Katana),
+    // counter goes from 10 → 15 (added 5). The storage proof returns the
+    // absolute value 15. The contract must compute delta = 15 - 10 = 5
+    // and apply: current(10) + delta(5) = 15, NOT 10 + 15 = 25.
+    let setup = setup_tee_test();
+
+    // Initialize shard with Add CRDT — snapshots counter = 0 at init
+    let setup = initialize_shard_for_test(
+        setup, CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    // Set counter to 10 AFTER init (simulates main chain having value 10
+    // at the fork block — normally this would already be 10 before init,
+    // but here init snapshots 0 and we set 10 afterwards to simulate
+    // that main chain and shard both start from 0 then main chain changes)
+    setup.test_contract_dispatcher.set_counter(10);
+    assert!(setup.test_contract_dispatcher.get_counter() == 10, "Counter should be 10");
+
+    // Get the counter storage slot
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // The shard (Katana) had counter = 0 at fork, incremented to 5.
+    // Storage proof returns absolute value = 5.
+    let shard_absolute_value: felt252 = 5;
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, shard_absolute_value)];
+
+    // Register commitment
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
+
+    let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
+
+    // Execute settlement
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
+    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
+
+    // Delta = 5 - 0 (init snapshot) = 5
+    // Result = 10 (current) + 5 (delta) = 15
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 15, "Counter should be 15 (10 + delta(5)), not 25 (10 + absolute(15))");
+}
+
+#[test]
+fn test_add_crdt_with_nonzero_initial_value() {
+    // Scenario: counter = 100 at init time, shard sees 100 → 130 (delta=30).
+    // Storage proof returns 130. Expected: current(100) + (130-100) = 130.
+    let setup = setup_tee_test();
+
+    // Set counter to 100 BEFORE init so the snapshot captures it
+    setup.test_contract_dispatcher.set_counter(100);
+
+    // Initialize shard — snapshots counter = 100
+    let setup = initialize_shard_for_test(
+        setup, CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // Shard started at 100, went to 130. Storage proof returns 130.
+    let shard_value: felt252 = 130;
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, shard_value)];
+
+    let global_state_root: felt252 = 0xdef;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
+
+    let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
+
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
+    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
+
+    // Delta = 130 - 100 = 30, new = 100 + 30 = 130
+    // Without the fix this would be 100 + 130 = 230 (WRONG)
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 130, "Counter should be 130 (100 + delta(30)), not 230");
+}
+
+#[test]
+fn test_add_crdt_no_change_in_shard() {
+    // Edge case: shard didn't modify the Add slot at all.
+    // Shard value = initial value, delta = 0. Counter unchanged.
+    let setup = setup_tee_test();
+
+    setup.test_contract_dispatcher.set_counter(50);
+
+    let setup = initialize_shard_for_test(
+        setup, CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // Shard value = 50 (same as initial, no change)
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 50)];
+
+    let global_state_root: felt252 = 0x111;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
+
+    let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
+
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
+    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
+
+    // Delta = 50 - 50 = 0, counter stays at 50
+    let counter = setup.test_contract_dispatcher.get_counter();
+    assert!(counter == 50, "Counter should remain 50 when shard made no changes");
+}
