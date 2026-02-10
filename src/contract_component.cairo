@@ -64,6 +64,7 @@ pub trait IContractComponent<TContractState> {
     fn update_shard_state(
         ref self: TContractState, storage_changes: Array<(slot_key, slot_value)>, shard_id: felt252,
     );
+    fn cancel_shard_state(ref self: TContractState, slots: Span<felt252>, shard_id: felt252);
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 }
 
@@ -231,6 +232,42 @@ pub mod contract_component {
             }
 
             self.emit(ContractSlotUpdated { contract_address, shard_id, slots_to_change });
+        }
+
+        fn cancel_shard_state(
+            ref self: ComponentState<TContractState>, slots: Span<felt252>, shard_id: felt252,
+        ) {
+            let caller = get_caller_address();
+            assert(caller == self.sharding_contract_address.read(), 'Unauthorized caller');
+
+            let contract_address = get_contract_address();
+
+            for slot_key in slots {
+                let slot_key = *slot_key;
+                let slot = StorageSlotWithContract {
+                    contract_address: contract_address, slot: slot_key,
+                };
+
+                // Only unlock slots belonging to this shard_id
+                if self.shard_id_for_slot.read(slot) != shard_id {
+                    continue;
+                }
+
+                let (_, init_count) = self.slots.read(slot_key);
+                if init_count == 0 {
+                    continue;
+                }
+
+                let new_init_count = init_count - 1;
+                if new_init_count == 0 {
+                    // Fully unlocked — reset to base Set type
+                    self.slots.write(slot_key, (CRDType::Set((contract_address, slot_key)), 0));
+                } else {
+                    // Other shards still active on this slot — just decrement
+                    let (crd_type, _) = self.slots.read(slot_key);
+                    self.slots.write(slot_key, (crd_type, new_init_count));
+                }
+            }
         }
 
         fn get_shard_id(
