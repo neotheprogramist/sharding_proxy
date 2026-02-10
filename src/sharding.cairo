@@ -60,6 +60,12 @@ pub trait ISharding<TContractState> {
         global_state_root: felt252,
     );
 
+    /// Cancel an active shard without settlement. Unlocks all specified slots
+    /// without modifying storage values. Use when Katana TEE crashed and data is lost.
+    fn cancel_shard(
+        ref self: TContractState, contract_address: ContractAddress, slots: Span<felt252>,
+    );
+
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 }
 
@@ -247,6 +253,20 @@ pub mod sharding {
                 contract_address: contract_address,
             };
             contract_dispatcher.update_shard_state(storage_changes, shard_id);
+        }
+
+        fn cancel_shard(
+            ref self: ContractState, contract_address: ContractAddress, slots: Span<felt252>,
+        ) {
+            self.config.assert_only_owner_or_operator();
+
+            let contract_shard_id = self.shard_id.read(contract_address);
+            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+
+            let contract_dispatcher = IContractComponentDispatcher {
+                contract_address: contract_address,
+            };
+            contract_dispatcher.cancel_shard_state(slots, contract_shard_id);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
