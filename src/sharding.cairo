@@ -67,6 +67,16 @@ pub trait ISharding<TContractState> {
     );
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
+
+    /// Request sharding for a game contract. Emits ShardingRequested event
+    /// which the operator service monitors. The operator then handles
+    /// initialization, Katana VM startup, and settlement.
+    fn request_sharding(
+        ref self: TContractState,
+        game_contract: ContractAddress,
+        storage_slots: Span<CRDType>,
+        settlement_event_selector: felt252,
+    );
 }
 
 #[starknet::contract]
@@ -110,6 +120,7 @@ pub mod sharding {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         ShardInitialized: ShardInitialized,
+        ShardingRequested: ShardingRequested,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
@@ -127,6 +138,14 @@ pub mod sharding {
         pub initializer: ContractAddress,
         pub shard_id: felt252,
         pub storage_slots: Span<CRDType>,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ShardingRequested {
+        #[key]
+        pub game_contract: ContractAddress,
+        pub storage_slots: Span<CRDType>,
+        pub settlement_event_selector: felt252,
     }
 
     pub mod Errors {
@@ -273,6 +292,17 @@ pub mod sharding {
             let shard_id = self.shard_id.read(contract_address);
             assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
             shard_id
+        }
+
+        fn request_sharding(
+            ref self: ContractState,
+            game_contract: ContractAddress,
+            storage_slots: Span<CRDType>,
+            settlement_event_selector: felt252,
+        ) {
+            self.config.assert_only_owner_or_operator();
+            assert(storage_slots.len() != 0, 'No storage slots provided');
+            self.emit(ShardingRequested { game_contract, storage_slots, settlement_event_selector });
         }
     }
 
