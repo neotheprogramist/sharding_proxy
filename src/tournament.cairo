@@ -8,6 +8,8 @@ pub trait ITournament<TContractState> {
     fn get_wins(self: @TContractState) -> felt252;
     fn get_high_score(self: @TContractState) -> felt252;
     fn get_tournament_active(self: @TContractState) -> felt252;
+    fn get_health(self: @TContractState) -> felt252;
+    fn set_health(ref self: TContractState, value: felt252);
 }
 
 #[starknet::contract]
@@ -38,6 +40,7 @@ pub mod tournament {
         wins: felt252,
         high_score: felt252,
         tournament_active: felt252,
+        health: felt252,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
@@ -79,6 +82,7 @@ pub mod tournament {
     fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.ownable.initializer(owner);
         self.tournament_active.write(1);
+        self.health.write(100);
     }
 
     #[abi(embed_v0)]
@@ -95,6 +99,12 @@ pub mod tournament {
             let score_u256: u256 = score.into();
             if score_u256 > current_high {
                 self.high_score.write(score);
+            }
+
+            // Each round costs 10 HP
+            let current_health: u256 = self.health.read().into();
+            if current_health >= 10 {
+                self.health.write((current_health - 10).try_into().unwrap());
             }
 
             let caller = get_caller_address();
@@ -135,6 +145,14 @@ pub mod tournament {
 
         fn get_tournament_active(self: @ContractState) -> felt252 {
             self.tournament_active.read()
+        }
+
+        fn get_health(self: @ContractState) -> felt252 {
+            self.health.read()
+        }
+
+        fn set_health(ref self: ContractState, value: felt252) {
+            self.health.write(value);
         }
     }
 }

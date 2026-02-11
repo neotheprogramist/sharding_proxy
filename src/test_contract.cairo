@@ -17,20 +17,12 @@ pub trait ITestContract<TContractState> {
 
     fn set_counter(ref self: TContractState, value: felt252);
 
-    fn get_score(ref self: TContractState) -> felt252;
-
-    fn set_score(ref self: TContractState, value: felt252);
-
-    fn get_health(ref self: TContractState) -> felt252;
-
-    fn set_health(ref self: TContractState, value: felt252);
-
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
     fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> CRDType;
 
     /// Returns a CRDType for a specific slot identified by its selector.
-    /// Use with selector!("counter"), selector!("score"), selector!("health").
+    /// Use with selector!("counter").
     fn get_storage_slot_for(
         ref self: TContractState, slot_name: felt252, crd_type: CRDType,
     ) -> CRDType;
@@ -64,8 +56,6 @@ pub mod test_contract {
     struct Storage {
         owner: ContractAddress,
         counter: felt252,
-        score: felt252,
-        health: felt252,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
@@ -127,22 +117,6 @@ pub mod test_contract {
 
         fn set_counter(ref self: ContractState, value: felt252) {
             self.counter.write(value);
-        }
-
-        fn get_score(ref self: ContractState) -> felt252 {
-            self.score.read()
-        }
-
-        fn set_score(ref self: ContractState, value: felt252) {
-            self.score.write(value);
-        }
-
-        fn get_health(ref self: ContractState) -> felt252 {
-            self.health.read()
-        }
-
-        fn set_health(ref self: ContractState, value: felt252) {
-            self.health.write(value);
         }
 
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
