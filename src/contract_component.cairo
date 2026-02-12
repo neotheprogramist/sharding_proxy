@@ -317,7 +317,9 @@ pub mod contract_component {
 
         fn end_shard(ref self: ComponentState<TContractState>) {
             let sharding_address = self.sharding_contract_address.read();
-            assert(!sharding_address.is_zero(), Errors::NOT_INITIALIZED);
+            if sharding_address.is_zero() {
+                return;
+            }
             let sharding_dispatcher = IShardingDispatcher { contract_address: sharding_address };
             sharding_dispatcher.end_shard();
         }

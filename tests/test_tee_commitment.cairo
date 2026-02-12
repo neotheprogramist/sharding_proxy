@@ -891,7 +891,7 @@ fn test_full_shard_lifecycle_e2e() {
     snf::stop_cheat_caller_address(game_addr);
 
     // Verify GameFinished event on game contract
-    let expected_game_finished = GameFinished { caller: game_addr, shard_id: 1 };
+    let expected_game_finished = GameFinished { caller: game_addr };
     game_spy
         .assert_emitted(
             @array![

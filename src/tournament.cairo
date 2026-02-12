@@ -19,7 +19,7 @@ pub mod tournament {
     use sharding_tests::contract_component::contract_component;
     use starknet::event::EventEmitter;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address};
     use super::ITournament;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
@@ -121,7 +121,7 @@ pub mod tournament {
         fn end_tournament(ref self: ContractState) {
             self.tournament_active.write(0);
             let caller = get_caller_address();
-            let shard_id = self.contract_component.end_shard();
+            self.contract_component.end_shard();
             self.emit(TournamentFinished { caller });
         }
 
