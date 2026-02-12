@@ -66,10 +66,23 @@ pub trait IContractComponent<TContractState> {
     );
     fn cancel_shard_state(ref self: TContractState, slots: Span<felt252>, shard_id: felt252);
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
+
+    /// Forward a sharding request to the sharding proxy.
+    /// Call this from the game contract so the proxy emits `ShardingRequested`.
+    fn request_sharding(
+        ref self: TContractState,
+        sharding_contract_address: ContractAddress,
+        storage_slots: Span<CRDType>,
+    );
+
+    /// Signal end of shard to the sharding proxy.
+    /// The proxy emits `ShardFinished` which the operator watches.
+    fn end_shard(ref self: TContractState);
 }
 
 #[starknet::component]
 pub mod contract_component {
+    use core::num::traits::Zero;
     use core::starknet::SyscallResultTrait;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use sharding_tests::sharding::{
@@ -290,6 +303,23 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>, contract_address: ContractAddress,
         ) -> felt252 {
             self.shard_id.read(contract_address)
+        }
+
+        fn request_sharding(
+            ref self: ComponentState<TContractState>,
+            sharding_contract_address: ContractAddress,
+            storage_slots: Span<CRDType>,
+        ) {
+            // Initialize shard: locks slots, snapshots Add values, and emits ShardingRequested
+            // via the sharding proxy's initialize_sharding
+            self.initialize_shard(sharding_contract_address, storage_slots);
+        }
+
+        fn end_shard(ref self: ComponentState<TContractState>) {
+            let sharding_address = self.sharding_contract_address.read();
+            assert(!sharding_address.is_zero(), Errors::NOT_INITIALIZED);
+            let sharding_dispatcher = IShardingDispatcher { contract_address: sharding_address };
+            sharding_dispatcher.end_shard();
         }
     }
 

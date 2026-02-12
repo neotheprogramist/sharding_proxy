@@ -19,6 +19,8 @@ pub trait ITestContract<TContractState> {
 
     fn read_storage_slot(ref self: TContractState, key: felt252) -> felt252;
 
+    fn write_storage_slot(ref self: TContractState, key: felt252, value: felt252);
+
     fn get_storage_slots(ref self: TContractState, crd_type: CRDType) -> CRDType;
 
     /// Returns a CRDType for a specific slot identified by its selector.
@@ -81,7 +83,6 @@ pub mod test_contract {
     #[derive(Drop, starknet::Event)]
     pub struct GameFinished {
         pub caller: ContractAddress,
-        pub shard_id: felt252,
     }
 
     pub mod Errors {
@@ -105,8 +106,8 @@ pub mod test_contract {
             // Convert to u256 for modulo operation (felt252 doesn't support %)
             let counter_u256: u256 = self.counter.read().into();
             if counter_u256 > 0 && counter_u256 % 3 == 0 {
-                let shard_id = self.contract_component.get_shard_id(get_contract_address());
-                self.emit(GameFinished { caller, shard_id });
+                self.contract_component.end_shard();
+                self.emit(GameFinished { caller });
             }
         }
 
@@ -121,6 +122,11 @@ pub mod test_contract {
 
         fn read_storage_slot(ref self: ContractState, key: felt252) -> felt252 {
             storage_read_syscall(0, key.try_into().unwrap()).unwrap_syscall()
+        }
+
+        fn write_storage_slot(ref self: ContractState, key: felt252, value: felt252) {
+            starknet::syscalls::storage_write_syscall(0, key.try_into().unwrap(), value)
+                .unwrap_syscall();
         }
 
         fn get_storage_slots(ref self: ContractState, crd_type: CRDType) -> CRDType {

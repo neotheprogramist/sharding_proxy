@@ -68,15 +68,10 @@ pub trait ISharding<TContractState> {
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 
-    /// Request sharding for a game contract. Emits ShardingRequested event
-    /// which the operator service monitors. The operator then handles
-    /// initialization, Katana VM startup, and settlement.
-    fn request_sharding(
-        ref self: TContractState,
-        game_contract: ContractAddress,
-        storage_slots: Span<CRDType>,
-        settlement_event_selector: felt252,
-    );
+    /// Signal that a shard has finished. Emits `ShardFinished` event
+    /// which the operator service monitors for settlement.
+    /// Called by the game contract (via contract_component).
+    fn end_shard(ref self: TContractState);
 }
 
 #[starknet::contract]
@@ -119,8 +114,8 @@ pub mod sharding {
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        ShardInitialized: ShardInitialized,
         ShardingRequested: ShardingRequested,
+        ShardFinished: ShardFinished,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
@@ -134,18 +129,17 @@ pub mod sharding {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct ShardInitialized {
-        pub initializer: ContractAddress,
-        pub shard_id: felt252,
-        pub storage_slots: Span<CRDType>,
-    }
-
-    #[derive(Drop, starknet::Event)]
     pub struct ShardingRequested {
         #[key]
         pub game_contract: ContractAddress,
         pub storage_slots: Span<CRDType>,
-        pub settlement_event_selector: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ShardFinished {
+        #[key]
+        pub game_contract: ContractAddress,
+        pub shard_id: felt252,
     }
 
     pub mod Errors {
@@ -176,10 +170,7 @@ pub mod sharding {
             self.shard_id.write(caller, new_shard_id);
             self.initializer_contract_address.write(caller);
 
-            self
-                .emit(
-                    ShardInitialized { initializer: caller, shard_id: new_shard_id, storage_slots },
-                );
+            self.emit(ShardingRequested { game_contract: caller, storage_slots });
         }
 
         fn update_contract_state_snos(
@@ -294,18 +285,12 @@ pub mod sharding {
             shard_id
         }
 
-        fn request_sharding(
-            ref self: ContractState,
-            game_contract: ContractAddress,
-            storage_slots: Span<CRDType>,
-            settlement_event_selector: felt252,
-        ) {
+        fn end_shard(ref self: ContractState) {
             self.config.assert_only_owner_or_operator();
-            assert(storage_slots.len() != 0, 'No storage slots provided');
-            self
-                .emit(
-                    ShardingRequested { game_contract, storage_slots, settlement_event_selector },
-                );
+            let caller = get_caller_address();
+            let shard_id = self.shard_id.read(caller);
+            assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            self.emit(ShardFinished { game_contract: caller, shard_id });
         }
     }
 

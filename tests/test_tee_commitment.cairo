@@ -11,13 +11,15 @@ use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
 use sharding_tests::contract_component::{
     CRDType, CRDTypeTrait, IContractComponentDispatcher, IContractComponentDispatcherTrait,
 };
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardFinished, ShardingRequested};
 use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
 use sharding_tests::storage_commitment::{
     IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
 };
+use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
 use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
 use snforge_std as snf;
-use snforge_std::{ContractClassTrait, DeclareResultTrait};
+use snforge_std::{ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait};
 use starknet::ContractAddress;
 
 const OWNER: ContractAddress = 123.try_into().unwrap();
@@ -814,4 +816,136 @@ fn test_add_crdt_no_change_in_shard() {
     // Delta = 50 - 50 = 0, counter stays at 50
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 50, "Counter should remain 50 when shard made no changes");
+}
+
+// =============================================================================
+// E2E Test: Full shard lifecycle
+// =============================================================================
+
+/// Full lifecycle test:
+/// 1. request_sharding (via contract_component) → ShardingRequested
+/// 2. Game plays (3 increments) → GameFinished + end_shard → ShardFinished
+/// 3. Settlement via update_contract_state_tee → state updated
+#[test]
+fn test_full_shard_lifecycle_e2e() {
+    let setup = setup_tee_test();
+
+    // Start spying on events BEFORE the actions
+    let mut sharding_spy = snf::spy_events();
+    let mut game_spy = snf::spy_events();
+
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // === Phase 1: request_sharding ===
+    // Game developer calls request_sharding on their game contract.
+    // This internally calls initialize_shard -> sharding.initialize_sharding
+    // which emits ShardingRequested.
+    // We cheat caller to be the test contract itself so that the component's
+    // shard_id map is keyed by the contract address (matching what increment()
+    // reads via get_contract_address()).
+    snf::start_cheat_caller_address(
+        setup.test_contract_component_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+
+    let slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())));
+
+    setup
+        .test_contract_component_dispatcher
+        .request_sharding(setup.shard_dispatcher.contract_address, array![slot].span());
+
+    snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
+
+    // Verify ShardingRequested event emitted on sharding contract
+    let expected_request = ShardingRequested {
+        game_contract: setup.test_contract_component_dispatcher.contract_address,
+        storage_slots: array![slot].span(),
+    };
+    sharding_spy
+        .assert_emitted(
+            @array![
+                (
+                    setup.shard_dispatcher.contract_address,
+                    ShardingEvent::ShardingRequested(expected_request),
+                ),
+            ],
+        );
+
+    let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
+    assert!(shard_id == 1, "Shard ID should be 1 after first request");
+
+    // === Phase 2: Game plays on Katana shard ===
+    // Simulate game activity: 3 increments trigger GameFinished + end_shard.
+    // Caller is the test contract itself (matching the shard_id key from Phase 1).
+    let game_addr = setup.test_contract_dispatcher.contract_address;
+    snf::start_cheat_caller_address(game_addr, game_addr);
+    setup.test_contract_dispatcher.increment(); // counter = 1
+    setup.test_contract_dispatcher.increment(); // counter = 2
+    setup.test_contract_dispatcher.increment(); // counter = 3 -> GameFinished + end_shard
+
+    snf::stop_cheat_caller_address(game_addr);
+
+    // Verify GameFinished event on game contract
+    let expected_game_finished = GameFinished { caller: game_addr, shard_id: 1 };
+    game_spy
+        .assert_emitted(
+            @array![
+                (
+                    setup.test_contract_dispatcher.contract_address,
+                    TestContractEvent::GameFinished(expected_game_finished),
+                ),
+            ],
+        );
+
+    // Verify ShardFinished event on sharding contract (emitted by end_shard)
+    let expected_shard_finished = ShardFinished {
+        game_contract: setup.test_contract_component_dispatcher.contract_address, shard_id: 1,
+    };
+    sharding_spy
+        .assert_emitted(
+            @array![
+                (
+                    setup.shard_dispatcher.contract_address,
+                    ShardingEvent::ShardFinished(expected_shard_finished),
+                ),
+            ],
+        );
+
+    // === Phase 3: Settlement via TEE ===
+    // Operator reads shard state from Katana and settles on main chain.
+    // Counter was 3 on the shard (SetLock = last-write-wins).
+    let new_counter: felt252 = 3;
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, new_counter)];
+
+    // Compute and register storage commitment (simulating TEE flow)
+    let global_state_root: felt252 = 0xdeadbeef;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
+
+    // Call update_contract_state_tee (as if operator is settling)
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes, shard_id, global_state_root,
+        );
+    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
+
+    // Verify final state: counter should be 3 (SetLock = direct overwrite)
+    let final_counter = setup.test_contract_dispatcher.get_counter();
+    assert!(final_counter == new_counter, "Counter should be 3 after settlement");
+
+    println!("E2E lifecycle test passed: request -> play -> settle");
 }

@@ -9,7 +9,7 @@ use sharding_tests::contract_component::{
     CRDType, CRDTypeTrait, IContractComponentDispatcher, IContractComponentDispatcherTrait,
 };
 use sharding_tests::shard_output::{ContractChanges, ShardOutput};
-use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardInitialized};
+use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardingRequested};
 use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
 use sharding_tests::storage_commitment::{
     IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
@@ -153,9 +153,8 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    let expected_init = ShardInitialized {
-        initializer: setup.test_contract_component_dispatcher.contract_address,
-        shard_id: shard_id,
+    let expected_event = ShardingRequested {
+        game_contract: setup.test_contract_component_dispatcher.contract_address,
         storage_slots: array![contract_slots_changes].span(),
     };
 
@@ -165,7 +164,7 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
             @array![
                 (
                     setup.shard_dispatcher.contract_address,
-                    ShardingEvent::ShardInitialized(expected_init),
+                    ShardingEvent::ShardingRequested(expected_event),
                 ),
             ],
         );
@@ -356,17 +355,20 @@ fn test_multiple_crd_operations() {
     println!("Counter after SetLock operation: {:?}", counter);
 
     // Initialize a new shard with Add operation type
+    // At this point counter=5 on main chain. Initialization snapshots initial_add_value=5.
     let mut setup = initialize_shard(
         setup, CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())),
     );
 
+    // Shard reports absolute value 10 (started at 5, accumulated 5 more).
+    // Delta = shard_value(10) - initial(5) = 5, new = current(5) + 5 = 10.
     let snos_output = get_state_update(
         setup.test_contract_dispatcher.contract_address.into(),
         setup
             .test_contract_dispatcher
             .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
             .slot(),
-        5,
+        10,
     );
 
     // Apply state update with Add operation
@@ -376,7 +378,7 @@ fn test_multiple_crd_operations() {
     );
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
-    // Verify counter is 10 after Add operation (5 + 5)
+    // Verify counter is 10 after Add operation (delta = 10 - 5 = 5, new = 5 + 5 = 10)
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 10, "Counter is not set correctly after Add operation");
     println!("Counter after Add operation: {:?}", counter);
@@ -1348,7 +1350,7 @@ fn test_tee_multiple_registered_slots() {
     // Verify both slots updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 42, "Counter should be 42");
-    let score = setup.test_contract_dispatcher.get_score();
+    let score = setup.test_contract_dispatcher.read_storage_slot(score_slot.slot());
     assert!(score == 100, "Score should be 100");
 }
 
@@ -1370,8 +1372,8 @@ fn test_tee_mixed_crd_types() {
 
     let mut setup = initialize_shard_multi(setup, array![counter_slot, score_slot].span());
 
-    // Set initial score value
-    setup.test_contract_dispatcher.set_score(50);
+    // Set initial score value via raw storage write
+    setup.test_contract_dispatcher.write_storage_slot(score_slot.slot(), 50);
 
     // Update both: counter should be overwritten, score should be added
     let storage_changes: Array<(felt252, felt252)> = array![
@@ -1385,7 +1387,7 @@ fn test_tee_mixed_crd_types() {
 
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 10, "Counter should be overwritten to 10");
-    let score = setup.test_contract_dispatcher.get_score();
+    let score = setup.test_contract_dispatcher.read_storage_slot(score_slot.slot());
     assert!(score == 75, "Score should be 50 + 25 = 75");
 }
 
@@ -1407,8 +1409,8 @@ fn test_snos_multiple_registered_slots() {
 
     let mut setup = initialize_shard_multi(setup, array![counter_slot, score_slot].span());
 
-    // Set initial score
-    setup.test_contract_dispatcher.set_score(10);
+    // Set initial score via raw storage write
+    setup.test_contract_dispatcher.write_storage_slot(score_slot.slot(), 10);
 
     // Build SNOS output with both slots
     let mut shard_output = ShardOutput {
@@ -1437,7 +1439,7 @@ fn test_snos_multiple_registered_slots() {
 
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 99, "Counter should be overwritten to 99");
-    let score = setup.test_contract_dispatcher.get_score();
+    let score = setup.test_contract_dispatcher.read_storage_slot(score_slot.slot());
     assert!(score == 15, "Score should be 10 + 5 = 15");
 }
 
@@ -1472,8 +1474,8 @@ fn test_tee_all_crd_types_at_once() {
 
     // Set initial values
     setup.test_contract_dispatcher.set_counter(0);
-    setup.test_contract_dispatcher.set_score(100);
-    setup.test_contract_dispatcher.set_health(50);
+    setup.test_contract_dispatcher.write_storage_slot(score_slot.slot(), 100);
+    setup.test_contract_dispatcher.write_storage_slot(health_slot.slot(), 50);
 
     // Update all slots via TEE
     let storage_changes: Array<(felt252, felt252)> = array![
@@ -1491,11 +1493,11 @@ fn test_tee_all_crd_types_at_once() {
     assert!(counter == 7, "SetLock counter should be overwritten to 7");
 
     // Add: score = 100 + 30 = 130
-    let score = setup.test_contract_dispatcher.get_score();
+    let score = setup.test_contract_dispatcher.read_storage_slot(score_slot.slot());
     assert!(score == 130, "Add score should be 100 + 30 = 130");
 
     // Set: health = 80 (overwritten from 50)
-    let health = setup.test_contract_dispatcher.get_health();
+    let health = setup.test_contract_dispatcher.read_storage_slot(health_slot.slot());
     assert!(health == 80, "Set health should be overwritten to 80");
 
     // Verify SetLock is now unlocked (re-initialization would need to use compatible type)
@@ -1523,8 +1525,10 @@ fn test_tee_all_crd_types_at_once() {
     );
 
     // Do a second round of updates
+    // For Add (score): initial snapshot at 2nd init = 130. Shard reports absolute 140.
+    // delta = 140 - 130 = 10, new = 130 + 10 = 140.
     let storage_changes2: Array<(felt252, felt252)> = array![
-        (counter_slot.slot(), 1), (score_slot.slot(), 10), (health_slot.slot(), 200),
+        (counter_slot.slot(), 1), (score_slot.slot(), 140), (health_slot.slot(), 200),
     ];
     let shard_id2 = setup
         .shard_dispatcher
@@ -1536,12 +1540,12 @@ fn test_tee_all_crd_types_at_once() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 1, "Second round: counter should be 1");
 
-    // Add: score = 130 + 10 = 140
-    let score = setup.test_contract_dispatcher.get_score();
+    // Add: score = 130 + (140 - 130) = 140
+    let score = setup.test_contract_dispatcher.read_storage_slot(score_slot.slot());
     assert!(score == 140, "Second round: score should be 130 + 10 = 140");
 
     // Set: health = 200 (overwritten)
-    let health = setup.test_contract_dispatcher.get_health();
+    let health = setup.test_contract_dispatcher.read_storage_slot(health_slot.slot());
     assert!(health == 200, "Second round: health should be 200");
 }
 

@@ -75,7 +75,6 @@ pub mod tournament {
     #[derive(Drop, starknet::Event)]
     pub struct TournamentFinished {
         pub caller: ContractAddress,
-        pub shard_id: felt252,
     }
 
     #[constructor]
@@ -121,10 +120,9 @@ pub mod tournament {
 
         fn end_tournament(ref self: ContractState) {
             self.tournament_active.write(0);
-
             let caller = get_caller_address();
-            let shard_id = self.contract_component.get_shard_id(get_contract_address());
-            self.emit(TournamentFinished { caller, shard_id });
+            let shard_id = self.contract_component.end_shard();
+            self.emit(TournamentFinished { caller });
         }
 
         fn get_total_score(self: @ContractState) -> felt252 {
