@@ -204,7 +204,7 @@ pub mod sharding {
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
-                    contract_dispatcher.update_shard_state(storage_changes, shard_id);
+                    contract_dispatcher.update_shard_state(storage_changes);
                 }
             }
         }
@@ -262,7 +262,7 @@ pub mod sharding {
             let contract_dispatcher = IContractComponentDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.update_shard_state(storage_changes, shard_id);
+            contract_dispatcher.update_shard_state(storage_changes);
         }
 
         fn cancel_shard(
@@ -276,7 +276,7 @@ pub mod sharding {
             let contract_dispatcher = IContractComponentDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.cancel_shard_state(slots, contract_shard_id);
+            contract_dispatcher.cancel_shard_state(slots);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {

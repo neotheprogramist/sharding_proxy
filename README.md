@@ -53,19 +53,34 @@ This project implements a sharding mechanism that enables contracts to:
 - Slot active + Set/Add: same-type stacking only (`init_count++`), type change blocked
 - After unlock: slot resets to `Set` with `init_count = 0`
 
+## Security Model
+
+The system splits authorization between the **Sharding proxy** and the **Game contract (ContractComponent)**:
+
+| Responsibility | Owner |
+|----------------|-------|
+| **Who** can settle a shard | Sharding proxy (owner/operator access control) |
+| **Which** shard is being settled | Sharding proxy (shard_id verification) |
+| **Whether** storage changes are authentic | Sharding proxy (TEE commitment verification) |
+| **What** slots can be modified | Game contract (only locked slots with `init_count > 0`) |
+| **How** slot values are merged | Game contract (CRDT logic: Set overwrites, Add computes delta, Lock discards) |
+
+The game contract does **not** track shard IDs — it trusts the proxy (verified via caller check) and only processes slots that were locked during initialization.
+
 ## How It Works
 
 ### TEE Update Flow
 
 1. Game contract calls `initialize_shard()` on its ContractComponent with slot CRD types
-2. ContractComponent calls `initialize_sharding()` on the Sharding contract
-3. Sharding stores shard_id and registered slots
-4. TEE executes the shard off-chain
-5. TEE registers a storage commitment hash via `StorageCommitment.register_verified_commitment()`
-6. Operator calls `update_contract_state_tee()` on the Sharding contract
-7. Sharding verifies the commitment against StorageCommitment registry
-8. Sharding forwards changes to ContractComponent via `update_shard_state()`
-9. ContractComponent applies CRD logic (Set/Add/SetLock/Lock) and unlocks slots
+2. ContractComponent validates slots, locks them (`init_count++`), snapshots Add values
+3. ContractComponent calls `initialize_sharding()` on the Sharding proxy
+4. Sharding proxy increments shard_id and emits `ShardingRequested` event
+5. TEE executes the shard off-chain
+6. TEE registers a storage commitment hash via `StorageCommitment.register_verified_commitment()`
+7. Operator calls `update_contract_state_tee()` on the Sharding proxy
+8. Proxy verifies shard_id, computes storage commitment, verifies against registry
+9. Proxy forwards changes to ContractComponent via `update_shard_state()`
+10. ContractComponent filters to locked slots, applies CRDT logic, and unlocks (`init_count--`)
 
 ### SNOS Update Flow
 

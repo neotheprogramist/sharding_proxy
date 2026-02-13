@@ -634,7 +634,7 @@ fn test_two_times_set() {
     println!("All valid CRD combinations passed");
 }
 
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: No contracts',))]
 #[test]
 fn test_too_many_setlock_updates() {
     let mut setup = setup();
@@ -663,7 +663,6 @@ fn test_too_many_setlock_updates() {
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 1,
         slots_to_change: array![
             (
                 setup
@@ -697,7 +696,7 @@ fn test_too_many_setlock_updates() {
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 }
 
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: No contracts',))]
 #[test]
 fn test_too_many_add_updates() {
     let mut setup = setup();
@@ -725,7 +724,6 @@ fn test_too_many_add_updates() {
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 1,
         slots_to_change: array![
             (
                 setup
@@ -805,7 +803,6 @@ fn test_two_times_init_add_and_two_updates() {
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 2,
         slots_to_change: array![
             (
                 setup
@@ -837,7 +834,6 @@ fn test_two_times_init_add_and_two_updates() {
 
     let expected_second_update_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
-        shard_id: 2,
         slots_to_change: array![
             (
                 setup

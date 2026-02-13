@@ -481,12 +481,13 @@ fn test_commitment_with_zero_value() {
 // =============================================================================
 
 #[test]
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: No contracts',))]
 fn test_replay_attack_prevented_same_shard_same_commitment() {
     // This test verifies that replay attacks are prevented by the sharding slot unlocking
     // mechanism.
     // Even though the commitment remains in the registry after first use, trying to use
-    // the same shard_id again will fail because the storage slot is no longer unlocked.
+    // the same shard_id again will fail because the storage slot is no longer locked
+    // (init_count == 0), so all slots are filtered out leaving no locked changes.
     let setup = setup_tee_test();
 
     // Initialize shard with SetLock (one-time use per shard)
@@ -542,14 +543,15 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
         .update_contract_state_tee(
             setup.test_contract_address, storage_changes2, shard_id, global_state_root2,
         );
-    // Should panic with 'Component: Storage is unlocked' before reaching this point
+    // Should panic with 'Component: No contracts' before reaching this point
 }
 
 #[test]
-#[should_panic(expected: ('Component: Storage is unlocked',))]
+#[should_panic(expected: ('Component: No contracts',))]
 fn test_replay_attack_prevented_same_shard_different_value() {
     // Even with a different value (different commitment), replay attack is still prevented
-    // because the shard slot itself is locked after first use.
+    // because the slot is unlocked (init_count == 0) after first settlement, so all slots
+    // are filtered out leaving no locked changes.
     let setup = setup_tee_test();
 
     // Initialize shard
@@ -603,7 +605,7 @@ fn test_replay_attack_prevented_same_shard_different_value() {
         .update_contract_state_tee(
             setup.test_contract_address, storage_changes2, shard_id, global_state_root2,
         );
-    // Should panic with 'Component: Storage is unlocked' before reaching this point
+    // Should panic with 'Component: No contracts' before reaching this point
 }
 
 #[test]
