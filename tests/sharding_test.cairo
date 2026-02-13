@@ -155,6 +155,7 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
 
     let expected_event = ShardingRequested {
         game_contract: setup.test_contract_component_dispatcher.contract_address,
+        shard_id: shard_id,
         storage_slots: array![contract_slots_changes].span(),
     };
 
@@ -634,7 +635,7 @@ fn test_two_times_set() {
     println!("All valid CRD combinations passed");
 }
 
-#[should_panic(expected: ('Component: No contracts',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 #[test]
 fn test_too_many_setlock_updates() {
     let mut setup = setup();
@@ -691,12 +692,11 @@ fn test_too_many_setlock_updates() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state - should fail because the slot is already unlocked
-    // This simulates trying to update more times than the init_count
+    // Second update_state - should fail: shard already deactivated by proxy
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 }
 
-#[should_panic(expected: ('Component: No contracts',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 #[test]
 fn test_too_many_add_updates() {
     let mut setup = setup();
@@ -750,8 +750,7 @@ fn test_too_many_add_updates() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state - should fail because the slot is already unlocked
-    // This simulates trying to update more times than the init_count
+    // Second update_state - should fail: shard already deactivated by proxy
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 }
 
@@ -794,12 +793,12 @@ fn test_two_times_init_add_and_two_updates() {
         5,
     );
 
-    // First update_state - should work
+    // First update_state - settle shard 1
     snf::start_cheat_caller_address(
         setup.shard_dispatcher.contract_address,
         setup.test_contract_component_dispatcher.contract_address,
     );
-    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
+    setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 1);
 
     let expected_event = ContractSlotUpdated {
         contract_address: setup.test_contract_dispatcher.contract_address,
@@ -829,7 +828,7 @@ fn test_two_times_init_add_and_two_updates() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state - should work
+    // Second update_state - settle shard 2 (each shard has its own active_shards entry)
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 
     let expected_second_update_event = ContractSlotUpdated {
@@ -1143,7 +1142,7 @@ fn test_update_contract_state_tee_success() {
 }
 
 #[test]
-#[should_panic(expected: ('Contract not initialized',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 fn test_update_contract_state_tee_no_shard() {
     let setup = setup();
 
@@ -1162,7 +1161,7 @@ fn test_update_contract_state_tee_no_shard() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding: Shard id mismatch',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 fn test_update_contract_state_tee_wrong_shard_id() {
     let mut setup = setup();
 

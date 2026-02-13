@@ -63,7 +63,10 @@ pub trait ISharding<TContractState> {
     /// Cancel an active shard without settlement. Unlocks all specified slots
     /// without modifying storage values. Use when Katana TEE crashed and data is lost.
     fn cancel_shard(
-        ref self: TContractState, contract_address: ContractAddress, slots: Span<felt252>,
+        ref self: TContractState,
+        contract_address: ContractAddress,
+        shard_id: felt252,
+        slots: Span<felt252>,
     );
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
@@ -101,8 +104,10 @@ pub mod sharding {
 
     #[storage]
     struct Storage {
-        initializer_contract_address: ContractAddress,
         shard_id: Map<ContractAddress, shard_id>,
+        /// Tracks which (game_contract, shard_id) pairs are currently active.
+        /// Set to true on initialize, false on settlement/cancel.
+        active_shards: Map<(ContractAddress, felt252), bool>,
         owner: ContractAddress,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
@@ -132,6 +137,7 @@ pub mod sharding {
     pub struct ShardingRequested {
         #[key]
         pub game_contract: ContractAddress,
+        pub shard_id: felt252,
         pub storage_slots: Span<CRDType>,
     }
 
@@ -143,7 +149,7 @@ pub mod sharding {
     }
 
     pub mod Errors {
-        pub const SHARD_ID_MISMATCH: felt252 = 'Sharding: Shard id mismatch';
+        pub const SHARD_NOT_ACTIVE: felt252 = 'Sharding: Shard not active';
         pub const SHARD_ID_NOT_SET: felt252 = 'Sharding: Shard id not set';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Sharding: No contracts';
         pub const NO_STORAGE_CHANGES: felt252 = 'Sharding: No storage changes';
@@ -168,9 +174,14 @@ pub mod sharding {
             let current_shard_id = self.shard_id.read(caller);
             let new_shard_id = safe_increment(current_shard_id, 'Shard ID overflow');
             self.shard_id.write(caller, new_shard_id);
-            self.initializer_contract_address.write(caller);
+            self.active_shards.write((caller, new_shard_id), true);
 
-            self.emit(ShardingRequested { game_contract: caller, storage_slots });
+            self
+                .emit(
+                    ShardingRequested {
+                        game_contract: caller, shard_id: new_shard_id, storage_slots,
+                    },
+                );
         }
 
         fn update_contract_state_snos(
@@ -183,16 +194,13 @@ pub mod sharding {
             assert(
                 program_output_struct.state_diff.span().len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
             );
+            let mut processed_count: u32 = 0;
             for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
                     .expect('Invalid contract address');
 
-                if self.initializer_contract_address.read() == contract_address {
-                    let contract_shard_id = self.shard_id.read(contract_address);
-                    assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-                    assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
-
+                if self.active_shards.read((contract_address, shard_id)) {
                     let mut storage_changes = ArrayTrait::new();
                     for storage_change in contract.storage_changes.span() {
                         let (storage_key, storage_value) = *storage_change;
@@ -201,12 +209,16 @@ pub mod sharding {
                     }
                     assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
 
+                    self.active_shards.write((contract_address, shard_id), false);
+
                     let contract_dispatcher = IContractComponentDispatcher {
                         contract_address: contract_address,
                     };
                     contract_dispatcher.update_shard_state(storage_changes);
+                    processed_count += 1;
                 }
             }
+            assert(processed_count != 0, Errors::SHARD_NOT_ACTIVE);
         }
 
         /// Update contract state with pre-verified storage changes from TEE.
@@ -229,15 +241,8 @@ pub mod sharding {
         ) {
             self.config.assert_only_owner_or_operator();
 
-            assert(
-                self.initializer_contract_address.read() == contract_address,
-                'Contract not initialized',
-            );
-
-            // Verify shard_id matches
-            let contract_shard_id = self.shard_id.read(contract_address);
-            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
-            assert(contract_shard_id == shard_id, Errors::SHARD_ID_MISMATCH);
+            // Verify this shard is active (replaces initializer + shard_id checks)
+            assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
 
             // Verify we have storage changes
             assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
@@ -258,6 +263,9 @@ pub mod sharding {
 
             self.emit(StorageCommitmentVerified { storage_commitment });
 
+            // Deactivate the shard after successful verification (prevents replay)
+            self.active_shards.write((contract_address, shard_id), false);
+
             // Forward to the contract component
             let contract_dispatcher = IContractComponentDispatcher {
                 contract_address: contract_address,
@@ -266,12 +274,15 @@ pub mod sharding {
         }
 
         fn cancel_shard(
-            ref self: ContractState, contract_address: ContractAddress, slots: Span<felt252>,
+            ref self: ContractState,
+            contract_address: ContractAddress,
+            shard_id: felt252,
+            slots: Span<felt252>,
         ) {
             self.config.assert_only_owner_or_operator();
 
-            let contract_shard_id = self.shard_id.read(contract_address);
-            assert(contract_shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
+            self.active_shards.write((contract_address, shard_id), false);
 
             let contract_dispatcher = IContractComponentDispatcher {
                 contract_address: contract_address,

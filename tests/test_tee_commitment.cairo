@@ -481,7 +481,7 @@ fn test_commitment_with_zero_value() {
 // =============================================================================
 
 #[test]
-#[should_panic(expected: ('Component: No contracts',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 fn test_replay_attack_prevented_same_shard_same_commitment() {
     // This test verifies that replay attacks are prevented by the sharding slot unlocking
     // mechanism.
@@ -547,7 +547,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
 }
 
 #[test]
-#[should_panic(expected: ('Component: No contracts',))]
+#[should_panic(expected: ('Sharding: Shard not active',))]
 fn test_replay_attack_prevented_same_shard_different_value() {
     // Even with a different value (different commitment), replay attack is still prevented
     // because the slot is unlocked (init_count == 0) after first settlement, so all slots
@@ -866,6 +866,7 @@ fn test_full_shard_lifecycle_e2e() {
     // Verify ShardingRequested event emitted on sharding contract
     let expected_request = ShardingRequested {
         game_contract: setup.test_contract_component_dispatcher.contract_address,
+        shard_id: 1,
         storage_slots: array![slot].span(),
     };
     sharding_spy
@@ -950,4 +951,121 @@ fn test_full_shard_lifecycle_e2e() {
     assert!(final_counter == new_counter, "Counter should be 3 after settlement");
 
     println!("E2E lifecycle test passed: request -> play -> settle");
+}
+
+// =============================================================================
+// Concurrent shard tests
+// =============================================================================
+
+#[test]
+fn test_concurrent_shards_settle_independently() {
+    // Initialize two concurrent shards for the same game contract
+    let setup = setup_tee_test();
+
+    // Initialize first shard (shard_id = 1)
+    let setup = initialize_shard_for_test(
+        setup, CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    // Initialize second shard (shard_id = 2) — Set allows stacking
+    let setup = initialize_shard_for_test(
+        setup, CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    // Settle first shard (shard_id = 1)
+    let storage_changes1: Array<(felt252, felt252)> = array![(counter_slot, 42)];
+    let global_state_root1: felt252 = 0xabc;
+    let storage_commitment1 = compute_commitment(storage_changes1.span());
+    let nonce1 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment1 = compute_full_commitment(
+        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment1);
+
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes1, 1, global_state_root1,
+        );
+
+    // Settle second shard (shard_id = 2)
+    let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 99)];
+    let global_state_root2: felt252 = 0xdef;
+    let storage_commitment2 = compute_commitment(storage_changes2.span());
+    let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment2 = compute_full_commitment(
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
+
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes2, 2, global_state_root2,
+        );
+    // Both shards settled successfully — counter should be 99 (last write wins for Set)
+}
+
+#[test]
+#[should_panic(expected: ('Sharding: Shard not active',))]
+fn test_settling_already_settled_shard_fails() {
+    let setup = setup_tee_test();
+
+    let setup = initialize_shard_for_test(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
+
+    let counter_slot = setup
+        .test_contract_dispatcher
+        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
+        .slot();
+
+    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
+    let global_state_root: felt252 = 0xabc;
+    let storage_commitment = compute_commitment(storage_changes.span());
+    let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment = compute_full_commitment(
+        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
+
+    let shard_id = setup.shard_dispatcher.get_shard_id(setup.test_contract_address);
+
+    snf::start_cheat_caller_address(
+        setup.shard_dispatcher.contract_address,
+        setup.test_contract_component_dispatcher.contract_address,
+    );
+
+    // First settlement succeeds
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes.clone(), shard_id, global_state_root,
+        );
+
+    // Second settlement with same shard_id should fail with 'Shard not active'
+    let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 99)];
+    let global_state_root2: felt252 = 0xdef;
+    let storage_commitment2 = compute_commitment(storage_changes2.span());
+    let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
+    let full_commitment2 = compute_full_commitment(
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+    );
+    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
+
+    setup
+        .shard_dispatcher
+        .update_contract_state_tee(
+            setup.test_contract_address, storage_changes2, shard_id, global_state_root2,
+        );
 }
