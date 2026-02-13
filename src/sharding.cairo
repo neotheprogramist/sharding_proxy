@@ -71,6 +71,12 @@ pub trait ISharding<TContractState> {
 
     fn get_shard_id(ref self: TContractState, contract_address: ContractAddress) -> felt252;
 
+    /// Check whether a specific shard is currently active (initialized but not yet
+    /// settled/cancelled).
+    fn is_shard_active(
+        self: @TContractState, contract_address: ContractAddress, shard_id: felt252,
+    ) -> bool;
+
     /// Signal that a shard has finished. Emits `ShardFinished` event
     /// which the operator service monitors for settlement.
     /// Called by the game contract (via contract_component).
@@ -294,6 +300,12 @@ pub mod sharding {
             let shard_id = self.shard_id.read(contract_address);
             assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
             shard_id
+        }
+
+        fn is_shard_active(
+            self: @ContractState, contract_address: ContractAddress, shard_id: felt252,
+        ) -> bool {
+            self.active_shards.read((contract_address, shard_id))
         }
 
         fn end_shard(ref self: ContractState) {
