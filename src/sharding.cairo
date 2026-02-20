@@ -285,7 +285,8 @@ pub mod sharding {
             shard_id: felt252,
             slots: Span<felt252>,
         ) {
-            self.config.assert_only_owner_or_operator();
+            // Owner-only: prevents a malicious operator from cancelling another operator's shard.
+            self.ownable.assert_only_owner();
 
             assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
             self.active_shards.write((contract_address, shard_id), false);
