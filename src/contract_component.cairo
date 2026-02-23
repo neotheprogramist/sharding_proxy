@@ -27,7 +27,7 @@ impl CRDTypeImpl of CRDTypeTrait {
             CRDType::Set => true,
             _ => false,
         };
-        assert(is_valid, 'Sharding already initialized');
+        assert(is_valid, 'Component: Already initialized');
     }
 
     fn is_same_variant(self: CRDType, other: CRDType) -> bool {
@@ -128,6 +128,12 @@ pub mod contract_component {
         pub const NOT_INITIALIZED: felt252 = 'Component: Not initialized';
         pub const STORAGE_UNLOCKED: felt252 = 'Component: Storage is unlocked';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
+        pub const UNAUTHORIZED_CALLER: felt252 = 'Component: Unauthorized caller';
+        pub const ALREADY_INITIALIZED: felt252 = 'Component: Already initialized';
+        pub const SLOT_LOCKED: felt252 = 'Component: Slot locked by shard';
+        pub const TYPE_CHANGE_WHILE_ACTIVE: felt252 = 'Component: Type change active';
+        pub const ADD_DELTA_UNDERFLOW: felt252 = 'Component: Add delta underflow';
+        pub const ARITHMETIC_OVERFLOW: felt252 = 'Component: Arithmetic overflow';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -153,10 +159,10 @@ pub mod contract_component {
                         CRDType::SetLock(_) | CRDType::Lock(_) => true,
                         _ => false,
                     };
-                    assert(!is_locking, 'Slot locked by active shard');
+                    assert(!is_locking, Errors::SLOT_LOCKED);
                     // Set and Add allow same-type stacking only
                     assert(
-                        prev_crd_type.is_same_variant(crd_type), 'Type change while slot active',
+                        prev_crd_type.is_same_variant(crd_type), Errors::TYPE_CHANGE_WHILE_ACTIVE,
                     );
                 } else {
                     // Slot is free (init_count == 0) — check type transition from Set
@@ -187,7 +193,7 @@ pub mod contract_component {
             ref self: ComponentState<TContractState>, storage_changes: Array<(felt252, felt252)>,
         ) {
             let caller = get_caller_address();
-            assert(caller == self.sharding_contract_address.read(), 'Unauthorized caller');
+            assert(caller == self.sharding_contract_address.read(), Errors::UNAUTHORIZED_CALLER);
 
             assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
 
@@ -246,7 +252,7 @@ pub mod contract_component {
 
         fn cancel_shard_state(ref self: ComponentState<TContractState>, slots: Span<felt252>) {
             let caller = get_caller_address();
-            assert(caller == self.sharding_contract_address.read(), 'Unauthorized caller');
+            assert(caller == self.sharding_contract_address.read(), Errors::UNAUTHORIZED_CALLER);
 
             let contract_address = get_contract_address();
 
@@ -320,10 +326,10 @@ pub mod contract_component {
                         let current_u256: u256 = current_value.into();
                         let shard_u256: u256 = value.into();
                         let initial_u256: u256 = initial_value.into();
-                        assert(shard_u256 >= initial_u256, 'Add delta underflow');
+                        assert(shard_u256 >= initial_u256, Errors::ADD_DELTA_UNDERFLOW);
                         let delta = shard_u256 - initial_u256;
                         let sum = current_u256 + delta;
-                        let new_value: felt252 = sum.try_into().expect('Arithmetic overflow');
+                        let new_value: felt252 = sum.try_into().expect(Errors::ARITHMETIC_OVERFLOW);
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },
                     // Lock reserves the slot during shard execution but discards

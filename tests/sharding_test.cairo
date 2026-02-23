@@ -414,7 +414,7 @@ fn test_multiple_crd_operations() {
 }
 
 #[test]
-#[should_panic(expected: ('Slot locked by active shard',))]
+#[should_panic(expected: ('Component: Slot locked by shard',))]
 fn test_setlock_after_setlock_fails() {
     let mut setup = setup();
 
@@ -443,7 +443,7 @@ fn test_setlock_after_setlock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Type change while slot active',))]
+#[should_panic(expected: ('Component: Type change active',))]
 fn test_setlock_after_add_fails() {
     let mut setup = setup();
 
@@ -474,7 +474,7 @@ fn test_setlock_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Slot locked by active shard',))]
+#[should_panic(expected: ('Component: Slot locked by shard',))]
 fn test_set_after_setlock_fails() {
     let mut setup = setup();
 
@@ -505,7 +505,7 @@ fn test_set_after_setlock_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Type change while slot active',))]
+#[should_panic(expected: ('Component: Type change active',))]
 fn test_set_after_add_fails() {
     let mut setup = setup();
 
@@ -536,7 +536,7 @@ fn test_set_after_add_fails() {
 }
 
 #[test]
-#[should_panic(expected: ('Type change while slot active',))]
+#[should_panic(expected: ('Component: Type change active',))]
 fn test_add_after_set() {
     let mut setup = setup();
 
@@ -1037,7 +1037,7 @@ fn unlocking_lock_when_no_update() {
     setup.shard_dispatcher.update_contract_state_snos(snos_output.span(), 2);
 }
 
-#[should_panic(expected: ('Slot locked by active shard',))]
+#[should_panic(expected: ('Component: Slot locked by shard',))]
 #[test]
 fn two_times_lock() {
     let mut setup = setup();

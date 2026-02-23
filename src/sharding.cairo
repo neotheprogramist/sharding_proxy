@@ -159,6 +159,9 @@ pub mod sharding {
         pub const SHARD_ID_NOT_SET: felt252 = 'Sharding: Shard id not set';
         pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Sharding: No contracts';
         pub const NO_STORAGE_CHANGES: felt252 = 'Sharding: No storage changes';
+        pub const SHARD_ID_OVERFLOW: felt252 = 'Sharding: Shard ID overflow';
+        pub const INVALID_CONTRACT_ADDR: felt252 = 'Sharding: Invalid contract addr';
+        pub const COMMITMENT_NOT_VERIFIED: felt252 = 'Sharding: Commitment unverified';
     }
 
     #[constructor]
@@ -178,7 +181,7 @@ pub mod sharding {
 
             let caller = get_caller_address();
             let current_shard_id = self.shard_id.read(caller);
-            let new_shard_id = safe_increment(current_shard_id, 'Shard ID overflow');
+            let new_shard_id = safe_increment(current_shard_id, Errors::SHARD_ID_OVERFLOW);
             self.shard_id.write(caller, new_shard_id);
             self.active_shards.write((caller, new_shard_id), true);
 
@@ -204,7 +207,7 @@ pub mod sharding {
             for contract in program_output_struct.state_diff.span() {
                 let contract_address: ContractAddress = (*contract.addr)
                     .try_into()
-                    .expect('Invalid contract address');
+                    .expect(Errors::INVALID_CONTRACT_ADDR);
 
                 if self.active_shards.read((contract_address, shard_id)) {
                     let mut storage_changes = ArrayTrait::new();
@@ -264,7 +267,7 @@ pub mod sharding {
             assert(
                 storage_commitment_registry
                     .verify(storage_commitment, contract_address, global_state_root),
-                'Storage commitment not verified',
+                Errors::COMMITMENT_NOT_VERIFIED,
             );
 
             self.emit(StorageCommitmentVerified { storage_commitment });
