@@ -639,7 +639,12 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes.clone(), shard_id, global_state_root, 0, 10,
+            setup.test_contract_address,
+            storage_changes.clone(),
+            shard_id,
+            global_state_root,
+            0,
+            10,
         );
 
     // Second update with SAME shard_id should FAIL at the contract_component level
@@ -1166,7 +1171,12 @@ fn test_settling_already_settled_shard_fails() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes.clone(), shard_id, global_state_root, 0, 10,
+            setup.test_contract_address,
+            storage_changes.clone(),
+            shard_id,
+            global_state_root,
+            0,
+            10,
         );
 
     // Second settlement with same shard_id should fail with 'Shard not active'

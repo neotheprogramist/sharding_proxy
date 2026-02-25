@@ -1134,7 +1134,12 @@ fn test_update_contract_state_tee_success() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root, 0, 10,
+            setup.test_contract_dispatcher.contract_address,
+            storage_changes,
+            1,
+            global_state_root,
+            0,
+            10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -1188,7 +1193,7 @@ fn test_update_contract_state_tee_wrong_shard_id() {
             2,
             0,
             0,
-            10, // wrong shard_id!
+            10 // wrong shard_id!
         );
 }
 
@@ -1257,7 +1262,12 @@ fn test_update_contract_state_tee_multiple_slots() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root, 0, 10,
+            setup.test_contract_dispatcher.contract_address,
+            storage_changes,
+            1,
+            global_state_root,
+            0,
+            10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 

@@ -15,11 +15,13 @@ pub trait IStorageCommitment<TContractState> {
     fn register_verified_commitment(ref self: TContractState, commitment: felt252);
 
     /// Verify a commitment by recomputing the hash with the stored nonce.
+    /// end_block_number is cryptographically bound in the commitment by SP1.
     fn verify(
         ref self: TContractState,
         storage_commitment: felt252,
         contract_address: ContractAddress,
         global_state_root: felt252,
+        end_block_number: u64,
     ) -> bool;
 
     fn is_registered(self: @TContractState, commitment: felt252) -> bool;
@@ -273,9 +275,7 @@ pub mod sharding {
             assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
 
             // Verify fork block matches init block (anti-fraud: TEE-attested via SP1)
-            let expected_init_block = self
-                .init_block_numbers
-                .read((contract_address, shard_id));
+            let expected_init_block = self.init_block_numbers.read((contract_address, shard_id));
             assert(fork_block_number == expected_init_block, Errors::FORK_BLOCK_MISMATCH);
 
             // C2: Verify shard ending was proven (end_block > 0 means SP1 verified event inclusion)
@@ -292,9 +292,12 @@ pub mod sharding {
             let storage_commitment = self.compute_storage_commitment(storage_changes.span());
 
             // Verify: recomputes full hash with stored nonce and checks registration
+            // end_block_number is cryptographically bound in the commitment by SP1
             assert(
                 storage_commitment_registry
-                    .verify(storage_commitment, contract_address, global_state_root),
+                    .verify(
+                        storage_commitment, contract_address, global_state_root, end_block_number,
+                    ),
                 Errors::COMMITMENT_NOT_VERIFIED,
             );
 
