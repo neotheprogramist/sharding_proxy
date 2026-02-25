@@ -52,13 +52,23 @@ pub trait ISharding<TContractState> {
     /// * `storage_changes` - Array of (key, value) pairs to update
     /// * `shard_id` - The shard ID for verification
     /// * `global_state_root` - The state root from TEE attestation
+    /// * `fork_block_number` - The block Katana forked from (attested by TEE, verified by SP1)
+    /// * `end_block_number` - The shard block where ShardFinished event was proven (from SP1
+    /// journal)
     fn update_contract_state_tee(
         ref self: TContractState,
         contract_address: ContractAddress,
         storage_changes: Array<(felt252, felt252)>,
         shard_id: felt252,
         global_state_root: felt252,
+        fork_block_number: u64,
+        end_block_number: u64,
     );
+
+    /// Get the init block number stored when a shard was initialized.
+    fn get_init_block_number(
+        self: @TContractState, contract_address: ContractAddress, shard_id: felt252,
+    ) -> u64;
 
     /// Cancel an active shard without settlement. Unlocks all specified slots
     /// without modifying storage values. Use when Katana TEE crashed and data is lost.
@@ -114,6 +124,9 @@ pub mod sharding {
         /// Tracks which (game_contract, shard_id) pairs are currently active.
         /// Set to true on initialize, false on settlement/cancel.
         active_shards: Map<(ContractAddress, felt252), bool>,
+        /// Stores the block number at which each shard was initialized.
+        /// Used to verify that TEE forked at the correct block (anti-fraud).
+        init_block_numbers: Map<(ContractAddress, felt252), u64>,
         owner: ContractAddress,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
@@ -162,6 +175,8 @@ pub mod sharding {
         pub const SHARD_ID_OVERFLOW: felt252 = 'Sharding: Shard ID overflow';
         pub const INVALID_CONTRACT_ADDR: felt252 = 'Sharding: Invalid contract addr';
         pub const COMMITMENT_NOT_VERIFIED: felt252 = 'Sharding: Commitment unverified';
+        pub const FORK_BLOCK_MISMATCH: felt252 = 'Sharding: Fork block mismatch';
+        pub const END_BLOCK_NOT_PROVEN: felt252 = 'Sharding: End block not proven';
     }
 
     #[constructor]
@@ -184,6 +199,8 @@ pub mod sharding {
             let new_shard_id = safe_increment(current_shard_id, Errors::SHARD_ID_OVERFLOW);
             self.shard_id.write(caller, new_shard_id);
             self.active_shards.write((caller, new_shard_id), true);
+            let block_number = starknet::get_block_info().unbox().block_number;
+            self.init_block_numbers.write((caller, new_shard_id), block_number);
 
             self
                 .emit(
@@ -247,11 +264,22 @@ pub mod sharding {
             storage_changes: Array<(felt252, felt252)>,
             shard_id: felt252,
             global_state_root: felt252,
+            fork_block_number: u64,
+            end_block_number: u64,
         ) {
             self.config.assert_only_owner_or_operator();
 
             // Verify this shard is active (replaces initializer + shard_id checks)
             assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
+
+            // Verify fork block matches init block (anti-fraud: TEE-attested via SP1)
+            let expected_init_block = self
+                .init_block_numbers
+                .read((contract_address, shard_id));
+            assert(fork_block_number == expected_init_block, Errors::FORK_BLOCK_MISMATCH);
+
+            // C2: Verify shard ending was proven (end_block > 0 means SP1 verified event inclusion)
+            assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
 
             // Verify we have storage changes
             assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
@@ -310,6 +338,12 @@ pub mod sharding {
             self: @ContractState, contract_address: ContractAddress, shard_id: felt252,
         ) -> bool {
             self.active_shards.read((contract_address, shard_id))
+        }
+
+        fn get_init_block_number(
+            self: @ContractState, contract_address: ContractAddress, shard_id: felt252,
+        ) -> u64 {
+            self.init_block_numbers.read((contract_address, shard_id))
         }
 
         fn end_shard(ref self: ContractState) {

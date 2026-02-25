@@ -84,6 +84,9 @@ fn setup() -> TestSetup {
         contract_address: storage_commitment,
     };
 
+    // Set a known block number so fork_block_number=0 works in all tests
+    snf::start_cheat_block_number(sharding, 0);
+
     TestSetup {
         sharding_spy,
         test_spy,
@@ -1131,7 +1134,7 @@ fn test_update_contract_state_tee_success() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root,
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -1156,7 +1159,7 @@ fn test_update_contract_state_tee_no_shard() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0, 0, 10,
         );
 }
 
@@ -1183,7 +1186,9 @@ fn test_update_contract_state_tee_wrong_shard_id() {
             setup.test_contract_dispatcher.contract_address,
             storage_changes,
             2,
-            0 // wrong shard_id!
+            0,
+            0,
+            10, // wrong shard_id!
         );
 }
 
@@ -1206,7 +1211,7 @@ fn test_update_contract_state_tee_empty_changes() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0,
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0, 0, 10,
         );
 }
 
@@ -1252,7 +1257,7 @@ fn test_update_contract_state_tee_multiple_slots() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root,
+            setup.test_contract_dispatcher.contract_address, storage_changes, 1, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -1310,6 +1315,8 @@ fn tee_update_with_commitment(
             storage_changes,
             shard_id,
             global_state_root,
+            0,
+            10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 }
