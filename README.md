@@ -129,4 +129,4 @@ Call `initialize_shard()` on the game contract's ContractComponent with:
 ### Update state (TEE path)
 
 1. Register commitment via `StorageCommitment.register_verified_commitment(hash)`
-2. Call `update_contract_state_tee(contract_address, storage_changes, shard_id, global_state_root)` on the sharding contract
+2. Call `update_contract_state_tee(contract_address, storage_changes, shard_id, global_state_root, fork_block_number)` on the sharding contract
