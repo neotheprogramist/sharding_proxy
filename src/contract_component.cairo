@@ -200,7 +200,9 @@ pub mod contract_component {
             let contract_address = get_contract_address();
 
             // Filter to only locked slots (init_count > 0).
-            // The proxy may send extra slots that aren't locked in this contract.
+            // The settlement proof may contain slots from multiple contracts, but each
+            // contract_component only applies changes to its own registered slots.
+            // Unregistered slots are silently ignored — this is by design, not an error.
             let mut locked_changes: Array<(felt252, felt252)> = ArrayTrait::new();
             for slot_entry in storage_changes.span() {
                 let (storage_key, storage_value) = *slot_entry;
@@ -302,6 +304,13 @@ pub mod contract_component {
     pub impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
+        /// Apply CRDT-based storage changes from a settled shard.
+        ///
+        /// Each slot is updated according to its registered CRDType:
+        /// - **Set/SetLock**: direct overwrite — `storage[key] = value`
+        /// - **Add**: delta merge — `delta = shard_value - initial_snapshot`,
+        ///   then `storage[key] = current + delta` (prevents double-counting)
+        /// - **Lock**: slot was reserved but value is discarded (unlock happens in caller)
         fn update_shard(
             ref self: ComponentState<TContractState>,
             storage_changes: Array<(felt252, felt252)>,
