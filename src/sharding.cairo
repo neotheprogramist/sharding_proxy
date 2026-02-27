@@ -1,38 +1,6 @@
 use sharding_tests::contract_component::CRDType;
 use starknet::ContractAddress;
 
-/// Interface for the Storage Commitment contract.
-///
-/// Security model:
-/// - Commitments are pre-computed hashes: hash(storage_commitment, contract_address, nonce,
-/// global_state_root)
-/// - Registration just stores the hash (from SP1 journal)
-/// - Verification recomputes the hash using stored nonce and checks if it was registered
-/// - After successful verification, commitment is deleted and nonce is incremented
-#[starknet::interface]
-pub trait IStorageCommitment<TContractState> {
-    /// Register a storage commitment hash that was verified by the TEE (SP1 proof).
-    fn register_verified_commitment(ref self: TContractState, commitment: felt252);
-
-    /// Verify a commitment by recomputing the hash with the stored nonce.
-    /// end_block_number is cryptographically bound in the commitment by SP1.
-    fn verify(
-        ref self: TContractState,
-        storage_commitment: felt252,
-        contract_address: ContractAddress,
-        global_state_root: felt252,
-        end_block_number: u64,
-    ) -> bool;
-
-    fn is_registered(self: @TContractState, commitment: felt252) -> bool;
-
-    fn get_nonce(self: @TContractState, contract_address: ContractAddress) -> u64;
-
-    fn get_latest_global_state_root(
-        self: @TContractState, contract_address: ContractAddress,
-    ) -> felt252;
-}
-
 #[derive(Drop, Serde, starknet::Store, Hash, Copy, Debug)]
 pub struct StorageSlotWithContract {
     pub contract_address: ContractAddress,
@@ -110,7 +78,10 @@ pub mod sharding {
     use sharding_tests::utils::safe_increment;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::{ContractAddress, get_caller_address};
-    use super::{ISharding, IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait};
+    use sharding_tests::storage_commitment::{
+        IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
+    };
+    use super::ISharding;
 
     component!(path: ownable_cpt, storage: ownable, event: OwnableEvent);
     component!(path: config_cpt, storage: config, event: ConfigEvent);

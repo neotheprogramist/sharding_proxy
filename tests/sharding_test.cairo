@@ -214,7 +214,8 @@ fn test_update_state() {
     let unchanged_slot = setup.test_contract_dispatcher.read_storage_slot(NOT_LOCKED_SLOT_ADDRESS);
     assert!(unchanged_slot == 0, "Unchanged slot is not set");
 
-    //TODO! we need to talk about silent consent to not update unsent slots
+    // Unsent slots are silently ignored — by design, the contract_component
+    // only applies changes to slots with init_count > 0 (registered/locked).
 
     // Initialize again with SetLock type
     let mut setup = initialize_shard(
@@ -987,7 +988,8 @@ fn lock_and_unlock_storage() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
-    //TODO! we need to talk about silent consent to not update Locked slots
+    // Lock slots reserve the key during shard execution but discard the shard's
+    // value on settlement — the slot is simply unlocked without modification.
 
     // Initialize again with Lock type
     let mut setup = initialize_shard(
@@ -1078,12 +1080,14 @@ fn compute_full_commitment(
     contract_address: ContractAddress,
     nonce: u64,
     global_state_root: felt252,
+    end_block_number: u64,
 ) -> felt252 {
     let mut data: Array<felt252> = ArrayTrait::new();
     data.append(storage_commitment);
     data.append(contract_address.into());
     data.append(nonce.into());
     data.append(global_state_root);
+    data.append(end_block_number.into());
     poseidon_hash_span(data.span())
 }
 
@@ -1113,7 +1117,7 @@ fn test_update_contract_state_tee_success() {
     let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
 
     // Compute and register the commitment
-    let global_state_root: felt252 = 0;
+    let global_state_root: felt252 = 0xabc;
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup
         .storage_commitment_dispatcher
@@ -1123,6 +1127,7 @@ fn test_update_contract_state_tee_success() {
         setup.test_contract_dispatcher.contract_address,
         nonce,
         global_state_root,
+        10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -1241,7 +1246,7 @@ fn test_update_contract_state_tee_multiple_slots() {
     ];
 
     // Compute and register the commitment
-    let global_state_root: felt252 = 0;
+    let global_state_root: felt252 = 0xabc;
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup
         .storage_commitment_dispatcher
@@ -1251,6 +1256,7 @@ fn test_update_contract_state_tee_multiple_slots() {
         setup.test_contract_dispatcher.contract_address,
         nonce,
         global_state_root,
+        10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -1311,6 +1317,7 @@ fn tee_update_with_commitment(
         setup.test_contract_dispatcher.contract_address,
         nonce,
         global_state_root,
+        10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 

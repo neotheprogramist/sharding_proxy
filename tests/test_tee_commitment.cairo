@@ -147,18 +147,20 @@ fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> felt252 {
 }
 
 /// Compute full commitment hash matching StorageCommitment.verify() logic:
-/// poseidon_hash(storage_commitment, contract_address, nonce, global_state_root)
+/// poseidon_hash(storage_commitment, contract_address, nonce, global_state_root, end_block_number)
 fn compute_full_commitment(
     storage_commitment: felt252,
     contract_address: ContractAddress,
     nonce: u64,
     global_state_root: felt252,
+    end_block_number: u64,
 ) -> felt252 {
     let mut data: Array<felt252> = ArrayTrait::new();
     data.append(storage_commitment);
     data.append(contract_address.into());
     data.append(nonce.into());
     data.append(global_state_root);
+    data.append(end_block_number.into());
     poseidon_hash_span(data.span())
 }
 
@@ -273,7 +275,7 @@ fn test_update_with_proof_success_when_commitment_registered() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
 
     // Pre-register the full commitment (simulating TEE verification flow)
@@ -397,7 +399,7 @@ fn test_update_with_proof_multiple_slots() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -444,7 +446,7 @@ fn test_update_with_proof_production_slot_value() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -527,7 +529,7 @@ fn test_fork_block_mismatch_reverts() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -569,7 +571,7 @@ fn test_fork_block_matches_init() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -623,7 +625,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -655,7 +657,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     let storage_commitment2 = compute_commitment(storage_changes2.span());
     let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment2 = compute_full_commitment(
-        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
 
@@ -692,7 +694,7 @@ fn test_replay_attack_prevented_same_shard_different_value() {
     let storage_commitment1 = compute_commitment(storage_changes1.span());
     let nonce1 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment1 = compute_full_commitment(
-        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1,
+        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment1);
 
@@ -717,7 +719,7 @@ fn test_replay_attack_prevented_same_shard_different_value() {
     let storage_commitment2 = compute_commitment(storage_changes2.span());
     let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment2 = compute_full_commitment(
-        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
 
@@ -756,7 +758,7 @@ fn test_nonce_based_replay_protection() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -821,7 +823,7 @@ fn test_add_crdt_computes_delta_not_absolute() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -872,7 +874,7 @@ fn test_add_crdt_with_nonzero_initial_value() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -919,7 +921,7 @@ fn test_add_crdt_no_change_in_shard() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -1051,7 +1053,7 @@ fn test_full_shard_lifecycle_e2e() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -1104,7 +1106,7 @@ fn test_concurrent_shards_settle_independently() {
     let storage_commitment1 = compute_commitment(storage_changes1.span());
     let nonce1 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment1 = compute_full_commitment(
-        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1,
+        storage_commitment1, setup.test_contract_address, nonce1, global_state_root1, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment1);
 
@@ -1125,7 +1127,7 @@ fn test_concurrent_shards_settle_independently() {
     let storage_commitment2 = compute_commitment(storage_changes2.span());
     let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment2 = compute_full_commitment(
-        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
 
@@ -1156,7 +1158,7 @@ fn test_settling_already_settled_shard_fails() {
     let storage_commitment = compute_commitment(storage_changes.span());
     let nonce = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment = compute_full_commitment(
-        storage_commitment, setup.test_contract_address, nonce, global_state_root,
+        storage_commitment, setup.test_contract_address, nonce, global_state_root, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
 
@@ -1185,7 +1187,7 @@ fn test_settling_already_settled_shard_fails() {
     let storage_commitment2 = compute_commitment(storage_changes2.span());
     let nonce2 = setup.storage_commitment_dispatcher.get_nonce(setup.test_contract_address);
     let full_commitment2 = compute_full_commitment(
-        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2,
+        storage_commitment2, setup.test_contract_address, nonce2, global_state_root2, 10,
     );
     setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment2);
 
