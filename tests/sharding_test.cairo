@@ -37,11 +37,17 @@ struct TestSetup {
     storage_commitment_dispatcher: IStorageCommitmentDispatcher,
 }
 
-/// Deploy StorageCommitment contract (from katana-tee)
+/// Deploy StorageCommitment contract (from katana-tee) and authorize test as the caller.
 fn deploy_storage_commitment() -> ContractAddress {
     let contract_class = snf::declare("StorageCommitment").unwrap().contract_class();
     let calldata: Array<felt252> = array![];
     let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
+
+    // Authorize the test itself as the caller for register_verified_commitment.
+    // In production, this is the KatanaTee contract address.
+    let dispatcher = IStorageCommitmentDispatcher { contract_address };
+    dispatcher.set_authorized_caller(snf::test_address());
+
     contract_address
 }
 
