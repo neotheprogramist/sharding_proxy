@@ -34,8 +34,8 @@ pub trait ITestContract<TContractState> {
 pub mod test_contract {
     use core::poseidon::PoseidonImpl;
     use core::starknet::SyscallResultTrait;
-    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::contract_component::{CRDType, contract_component};
     use starknet::event::EventEmitter;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
