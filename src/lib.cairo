@@ -1,5 +1,7 @@
 pub mod config;
 pub mod contract_component;
+pub mod dojo_test_model;
+pub mod mock_sharding_proxy;
 pub mod shard_output;
 pub mod sharding;
 pub mod storage_commitment;

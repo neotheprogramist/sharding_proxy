@@ -43,7 +43,8 @@ struct TeeTestSetup {
 /// Deploy StorageCommitment contract and authorize test as the caller.
 fn deploy_storage_commitment() -> ContractAddress {
     let contract_class = snf::declare("StorageCommitment").unwrap().contract_class();
-    let calldata: Array<felt252> = array![];
+    let deployer = snf::test_address();
+    let calldata: Array<felt252> = array![deployer.into()];
     let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
 
     // Authorize the test itself as the caller for register_verified_commitment.

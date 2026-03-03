@@ -14,8 +14,8 @@ pub trait ITournament<TContractState> {
 
 #[starknet::contract]
 pub mod tournament {
-    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::contract_component::contract_component;
     use starknet::event::EventEmitter;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};

@@ -63,12 +63,28 @@ pub trait ISharding<TContractState> {
     fn end_shard(ref self: TContractState);
 }
 
+/// Dev-only settlement interface (compiled only with `--features dev`).
+/// Applies CRDT state changes WITHOUT requiring TEE attestation or SP1 proof.
+/// Owner-only access. Never available in production builds.
+#[cfg(feature: 'dev')]
+#[starknet::interface]
+pub trait IShardingDev<TContractState> {
+    fn update_contract_state_dev(
+        ref self: TContractState,
+        contract_address: ContractAddress,
+        storage_changes: Array<(felt252, felt252)>,
+        shard_id: felt252,
+        fork_block_number: u64,
+        end_block_number: u64,
+    );
+}
+
 #[starknet::contract]
 pub mod sharding {
     use core::poseidon::poseidon_hash_span;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::config::config_cpt;
     use sharding_tests::config::config_cpt::InternalTrait as ConfigInternal;
     use sharding_tests::contract_component::{
@@ -186,6 +202,9 @@ pub mod sharding {
         fn update_contract_state_snos(
             ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252,
         ) {
+            // TODO: Implement SNOS path
+            core::panic_with_felt252('SNOS path not implemented');
+            
             self.config.assert_only_owner_or_operator();
             let mut snos_output = snos_output;
             let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
@@ -326,6 +345,38 @@ pub mod sharding {
             let shard_id = self.shard_id.read(caller);
             assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
             self.emit(ShardFinished { game_contract: caller, shard_id });
+        }
+    }
+
+    #[cfg(feature: 'dev')]
+    #[abi(embed_v0)]
+    impl ShardingDevImpl of super::IShardingDev<ContractState> {
+        fn update_contract_state_dev(
+            ref self: ContractState,
+            contract_address: ContractAddress,
+            storage_changes: Array<(felt252, felt252)>,
+            shard_id: felt252,
+            fork_block_number: u64,
+            end_block_number: u64,
+        ) {
+            self.ownable.assert_only_owner();
+
+            assert(
+                self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE,
+            );
+            assert(
+                fork_block_number == self.init_block_numbers.read((contract_address, shard_id)),
+                Errors::FORK_BLOCK_MISMATCH,
+            );
+            assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
+            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+
+            self.active_shards.write((contract_address, shard_id), false);
+
+            let contract_dispatcher = IContractComponentDispatcher {
+                contract_address: contract_address,
+            };
+            contract_dispatcher.update_shard_state(storage_changes);
         }
     }
 
