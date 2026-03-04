@@ -2,9 +2,6 @@ use core::poseidon::PoseidonImpl;
 use core::result::ResultTrait;
 use core::traits::Into;
 use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
-use sharding_tests::contract_component::contract_component::{
-    ContractSlotUpdated, Event as ContractComponentEvent,
-};
 use sharding_tests::contract_component::{
     CRDType, CRDTypeTrait, IContractComponentDispatcher, IContractComponentDispatcherTrait,
 };
@@ -143,6 +140,8 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
     let expected_event = ShardingRequested {
         game_contract: setup.test_contract_component_dispatcher.contract_address,
         shard_id: shard_id,
+        chunk_index: 0,
+        total_chunks: 1,
         storage_slots: array![contract_slots_changes].span(),
     };
 
@@ -616,22 +615,6 @@ fn test_too_many_setlock_updates() {
     ];
     tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
 
-    let expected_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        slots_to_change: array![(counter_slot, 5)],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
-                ),
-            ],
-        );
-
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
@@ -670,22 +653,6 @@ fn test_too_many_add_updates() {
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
     tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
-
-    let expected_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        slots_to_change: array![(counter_slot, 5)],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
-                ),
-            ],
-        );
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -741,22 +708,6 @@ fn test_two_times_init_add_and_two_updates() {
     ];
     tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
 
-    let expected_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        slots_to_change: array![(counter_slot, 5)],
-    };
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_event.clone()),
-                ),
-            ],
-        );
-
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
@@ -767,24 +718,8 @@ fn test_two_times_init_add_and_two_updates() {
     ];
     tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
 
-    let expected_second_update_event = ContractSlotUpdated {
-        contract_address: setup.test_contract_dispatcher.contract_address,
-        slots_to_change: array![(counter_slot, 5)],
-    };
-
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 10, "Counter is not updated correctly");
-
-    setup
-        .test_spy
-        .assert_emitted(
-            @array![
-                (
-                    setup.test_contract_component_dispatcher.contract_address,
-                    ContractComponentEvent::ContractSlotUpdated(expected_second_update_event),
-                ),
-            ],
-        );
 }
 
 

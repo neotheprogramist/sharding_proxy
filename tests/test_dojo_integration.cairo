@@ -4,9 +4,9 @@
 //! → proxy settlement → world.update_shard_state → model values updated.
 
 use dojo::model::{Model, ModelStorage, ModelStorageTest};
-use dojo::sharding::compute_dojo_field_slot;
 use dojo::sharding::component::{IContractComponentDispatcher, IContractComponentDispatcherTrait};
-use dojo::sharding::request::{IntoShardModel, IntoShardField, ShardModel};
+use dojo::sharding::compute_dojo_field_slot;
+use dojo::sharding::request::{IntoShardField, IntoShardModel, ShardModel};
 use dojo::utils::entity_id_from_keys;
 use dojo::world::IWorldDispatcherTrait;
 use dojo_snf_test::world::{NamespaceDef, TestResource, spawn_test_world};
@@ -62,8 +62,7 @@ fn deploy_sharding_proxy(
 /// Spawn a dojo world with the Resource model and return (world, model_selector).
 fn deploy_world_and_resource() -> (dojo::world::WorldStorage, felt252) {
     let namespace_def = NamespaceDef {
-        namespace: "dojo",
-        resources: [TestResource::Model("Resource")].span(),
+        namespace: "dojo", resources: [TestResource::Model("Resource")].span(),
     };
 
     (spawn_test_world([namespace_def].span()), Model::<Resource>::selector(DOJO_NSH))

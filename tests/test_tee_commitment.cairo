@@ -997,6 +997,8 @@ fn test_full_shard_lifecycle_e2e() {
     let expected_request = ShardingRequested {
         game_contract: setup.test_contract_component_dispatcher.contract_address,
         shard_id: 1,
+        chunk_index: 0,
+        total_chunks: 1,
         storage_slots: array![slot].span(),
     };
     sharding_spy
