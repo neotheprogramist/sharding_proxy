@@ -23,8 +23,9 @@ mod errors {
 #[starknet::component]
 pub mod config_cpt {
     use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
-    use openzeppelin_access::ownable::OwnableComponent::OwnableImpl;
+    use openzeppelin_access::ownable::OwnableComponent::{
+        InternalTrait as OwnableInternal, OwnableImpl,
+    };
     use starknet::ContractAddress;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use super::{IConfig, errors};
