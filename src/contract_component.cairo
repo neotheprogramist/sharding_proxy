@@ -248,8 +248,7 @@ pub mod contract_component {
                     }
                 }
             }
-
-            self.emit(ContractSlotUpdated { contract_address, slots_to_change: locked_changes });
+            // self.emit(ContractSlotUpdated { contract_address, slots_to_change: locked_changes });
         }
 
         fn cancel_shard_state(ref self: ComponentState<TContractState>, slots: Span<felt252>) {
@@ -346,7 +345,7 @@ pub mod contract_component {
                     CRDType::Lock => {},
                 }
             }
-            self.emit(ContractComponentUpdated { storage_changes });
+            // self.emit(ContractComponentUpdated { storage_changes });
         }
     }
 }
