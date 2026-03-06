@@ -1,30 +1,30 @@
 use starknet::ContractAddress;
 
+pub type SlotKey = felt252;
+pub type SlotValue = felt252;
+
 #[derive(Drop, Serde, Hash, Copy, Debug, PartialEq, starknet::Store)]
 pub enum CRDType {
-    Add: (ContractAddress, slot_value),
-    SetLock: (ContractAddress, slot_value),
+    Add: (ContractAddress, SlotValue),
+    SetLock: (ContractAddress, SlotValue),
     #[default]
-    Set: (ContractAddress, slot_value),
-    Lock: (ContractAddress, slot_value),
+    Set: (ContractAddress, SlotValue),
+    Lock: (ContractAddress, SlotValue),
 }
-
-type slot_key = felt252;
-type slot_value = felt252;
 
 pub trait CRDTypeTrait {
-    fn verify_crd_type(self: CRDType, crd_type: CRDType);
+    fn assert_is_base_set(self: CRDType);
     fn is_same_variant(self: CRDType, other: CRDType) -> bool;
+    fn is_lock(self: CRDType) -> bool;
+    fn is_exclusive(self: CRDType) -> bool;
     fn contract_address(self: CRDType) -> ContractAddress;
-    fn slot(self: CRDType) -> slot_value;
+    fn slot(self: CRDType) -> SlotValue;
 }
 
-impl CRDTypeImpl of CRDTypeTrait {
-    fn verify_crd_type(self: CRDType, crd_type: CRDType) {
-        // When init_count == 0, current type is always Set (base state after unlock).
-        // Set can transition to any type — this is the only valid starting point.
+pub impl CRDTypeImpl of CRDTypeTrait {
+    fn assert_is_base_set(self: CRDType) {
         let is_valid = match self {
-            CRDType::Set => true,
+            CRDType::Set(_) => true,
             _ => false,
         };
         assert(is_valid, 'Component: Already initialized');
@@ -39,6 +39,21 @@ impl CRDTypeImpl of CRDTypeTrait {
             _ => false,
         }
     }
+
+    fn is_lock(self: CRDType) -> bool {
+        match self {
+            CRDType::Lock(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_exclusive(self: CRDType) -> bool {
+        match self {
+            CRDType::SetLock(_) | CRDType::Lock(_) => true,
+            _ => false,
+        }
+    }
+
     fn contract_address(self: CRDType) -> ContractAddress {
         match self {
             CRDType::Add((address, _)) | CRDType::SetLock((address, _)) |
@@ -61,24 +76,13 @@ pub trait IContractComponent<TContractState> {
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
     );
-    /// Apply storage changes from a settled shard and unlock the slots.
-    /// Caller must be the registered sharding contract (proxy).
-    /// The proxy already verifies shard_id — the game contract trusts the proxy.
-    fn update_shard_state(ref self: TContractState, storage_changes: Array<(slot_key, slot_value)>);
-    /// Cancel (unlock) slots without applying shard values.
-    /// Caller must be the registered sharding contract (proxy).
+    fn update_shard_state(ref self: TContractState, storage_changes: Array<(SlotKey, SlotValue)>);
     fn cancel_shard_state(ref self: TContractState, slots: Span<felt252>);
-
-    /// Forward a sharding request to the sharding proxy.
-    /// Call this from the game contract so the proxy emits `ShardingRequested`.
     fn request_sharding(
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
         storage_slots: Span<CRDType>,
     );
-
-    /// Signal end of shard to the sharding proxy.
-    /// The proxy emits `ShardFinished` which the operator watches.
     fn end_shard(ref self: TContractState);
 }
 
@@ -93,17 +97,16 @@ pub mod contract_component {
     use starknet::storage_access::StorageAddress;
     use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
-    use super::{CRDType, CRDTypeTrait, slot_value};
+    use super::{CRDType, CRDTypeTrait, SlotValue};
 
-    type init_count = felt252;
+    type InitCount = felt252;
 
     #[storage]
     pub struct Storage {
-        slots: Map<slot_value, (CRDType, init_count)>,
+        slots: Map<SlotValue, (CRDType, InitCount)>,
         sharding_contract_address: ContractAddress,
-        /// Snapshot of Add slot values at initialization time.
-        /// Used to compute delta = (shard_value - initial) during settlement.
-        initial_add_values: Map<slot_value, felt252>,
+        /// Add CRDT snapshots for delta computation: delta = shard_value - initial.
+        initial_add_values: Map<SlotValue, felt252>,
     }
 
     #[event]
@@ -127,13 +130,14 @@ pub mod contract_component {
     pub mod Errors {
         pub const NOT_INITIALIZED: felt252 = 'Component: Not initialized';
         pub const STORAGE_UNLOCKED: felt252 = 'Component: Storage is unlocked';
-        pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Component: No contracts';
+        pub const NO_STORAGE_CHANGES: felt252 = 'Component: No storage changes';
         pub const UNAUTHORIZED_CALLER: felt252 = 'Component: Unauthorized caller';
         pub const ALREADY_INITIALIZED: felt252 = 'Component: Already initialized';
         pub const SLOT_LOCKED: felt252 = 'Component: Slot locked by shard';
         pub const TYPE_CHANGE_WHILE_ACTIVE: felt252 = 'Component: Type change active';
         pub const ADD_DELTA_UNDERFLOW: felt252 = 'Component: Add delta underflow';
         pub const ARITHMETIC_OVERFLOW: felt252 = 'Component: Arithmetic overflow';
+        pub const SHARDING_PROXY_MISMATCH: felt252 = 'Component: Proxy mismatch';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -145,44 +149,42 @@ pub mod contract_component {
             sharding_contract_address: ContractAddress,
             contract_slots_changes: Span<CRDType>,
         ) {
+            let current_proxy = self.sharding_contract_address.read();
+            if !current_proxy.is_zero() {
+                assert(current_proxy == sharding_contract_address, Errors::SHARDING_PROXY_MISMATCH);
+            }
             self.sharding_contract_address.write(sharding_contract_address);
 
-            // Validate and lock slots
             for crd_type in contract_slots_changes {
                 let crd_type = *crd_type;
 
                 let (prev_crd_type, init_count) = self.slots.read(crd_type.slot());
 
                 if init_count != 0 {
-                    // Slot is active — SetLock and Lock are exclusive (no stacking)
-                    let is_locking = match prev_crd_type {
-                        CRDType::SetLock(_) | CRDType::Lock(_) => true,
-                        _ => false,
-                    };
-                    assert(!is_locking, Errors::SLOT_LOCKED);
-                    // Set and Add allow same-type stacking only
+                    assert(!prev_crd_type.is_exclusive(), Errors::SLOT_LOCKED);
                     assert(
                         prev_crd_type.is_same_variant(crd_type), Errors::TYPE_CHANGE_WHILE_ACTIVE,
                     );
                 } else {
-                    // Slot is free (init_count == 0) — check type transition from Set
-                    prev_crd_type.verify_crd_type(crd_type);
+                    prev_crd_type.assert_is_base_set();
                 }
 
                 let new_init_count = safe_increment(init_count, 'Init count overflow');
                 self.slots.write(crd_type.slot(), (crd_type, new_init_count));
 
-                // For Add CRDTs, snapshot the current value so we can compute
-                // delta = (shard_value - initial) during settlement.
+                // For Add CRDTs, snapshot the current value ONLY on first lock (0→1).
+                // When multiple shards stack on the same Add slot, the initial snapshot
+                // must remain from the first shard — otherwise subsequent initializations
+                // would overwrite it and corrupt delta computation at settlement time.
                 if let CRDType::Add(_) = crd_type {
-                    let storage_address: StorageAddress = crd_type.slot().try_into().unwrap();
-                    let current = storage_read_syscall(0, storage_address).unwrap_syscall();
-                    self.initial_add_values.write(crd_type.slot(), current);
+                    if init_count == 0 {
+                        let storage_address: StorageAddress = crd_type.slot().try_into().unwrap();
+                        let current = storage_read_syscall(0, storage_address).unwrap_syscall();
+                        self.initial_add_values.write(crd_type.slot(), current);
+                    }
                 }
             }
 
-            // Forward to proxy — emits ShardingRequested event.
-            // The proxy is the single source of truth for shard_id.
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
@@ -195,14 +197,12 @@ pub mod contract_component {
             let caller = get_caller_address();
             assert(caller == self.sharding_contract_address.read(), Errors::UNAUTHORIZED_CALLER);
 
-            assert(storage_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
+            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
             let contract_address = get_contract_address();
 
-            // Filter to only locked slots (init_count > 0).
-            // The settlement proof may contain slots from multiple contracts, but each
-            // contract_component only applies changes to its own registered slots.
-            // Unregistered slots are silently ignored — this is by design, not an error.
+            // Filter to locked slots only. Unregistered slots are silently ignored —
+            // the settlement proof may contain slots from other contracts.
             let mut locked_changes: Array<(felt252, felt252)> = ArrayTrait::new();
             for slot_entry in storage_changes.span() {
                 let (storage_key, storage_value) = *slot_entry;
@@ -212,43 +212,14 @@ pub mod contract_component {
                 }
             }
 
-            assert(locked_changes.len() != 0, Errors::NO_CONTRACTS_SUBMITTED);
+            assert(locked_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
-            // Apply storage changes via CRDT logic (only locked slots)
             self.update_shard(locked_changes.clone(), contract_address);
 
-            // Unlock slots: decrement init_count, reset Lock types to Set
             for slot_entry in locked_changes.span() {
                 let (storage_key, _) = *slot_entry;
-
-                let (crd_type, init_count) = self.slots.read(storage_key);
-
-                // Lock slots reserve the storage key during shard execution
-                // but always discard the shard value — reset fully on unlock.
-                let is_lock = match crd_type {
-                    CRDType::Lock => true,
-                    _ => false,
-                };
-
-                if is_lock {
-                    self
-                        .slots
-                        .write(storage_key, (CRDType::Set((contract_address, storage_key)), 0));
-                } else {
-                    let new_init_count = init_count - 1;
-                    if new_init_count == 0 {
-                        self
-                            .slots
-                            .write(storage_key, (CRDType::Set((contract_address, storage_key)), 0));
-                        if let CRDType::Add(_) = crd_type {
-                            self.initial_add_values.write(storage_key, 0);
-                        }
-                    } else {
-                        self.slots.write(storage_key, (crd_type, new_init_count));
-                    }
-                }
+                self.unlock_slot(storage_key, contract_address);
             }
-            // self.emit(ContractSlotUpdated { contract_address, slots_to_change: locked_changes });
         }
 
         fn cancel_shard_state(ref self: ComponentState<TContractState>, slots: Span<felt252>) {
@@ -259,23 +230,11 @@ pub mod contract_component {
 
             for slot_key in slots {
                 let slot_key = *slot_key;
-
-                let (crd_type, init_count) = self.slots.read(slot_key);
+                let (_, init_count) = self.slots.read(slot_key);
                 if init_count == 0 {
                     continue;
                 }
-
-                let new_init_count = init_count - 1;
-                if new_init_count == 0 {
-                    // Fully unlocked — reset to base Set type
-                    self.slots.write(slot_key, (CRDType::Set((contract_address, slot_key)), 0));
-                    if let CRDType::Add(_) = crd_type {
-                        self.initial_add_values.write(slot_key, 0);
-                    }
-                } else {
-                    // Other shards still active on this slot — just decrement
-                    self.slots.write(slot_key, (crd_type, new_init_count));
-                }
+                self.unlock_slot(slot_key, contract_address);
             }
         }
 
@@ -284,16 +243,12 @@ pub mod contract_component {
             sharding_contract_address: ContractAddress,
             storage_slots: Span<CRDType>,
         ) {
-            // Initialize shard: validates + locks slots, snapshots Add values,
-            // then forwards to proxy which emits ShardingRequested
             self.initialize_shard(sharding_contract_address, storage_slots);
         }
 
         fn end_shard(ref self: ComponentState<TContractState>) {
             let sharding_address = self.sharding_contract_address.read();
-            if sharding_address.is_zero() {
-                return;
-            }
+            assert(!sharding_address.is_zero(), Errors::NOT_INITIALIZED);
             let sharding_dispatcher = IShardingDispatcher { contract_address: sharding_address };
             sharding_dispatcher.end_shard();
         }
@@ -303,13 +258,26 @@ pub mod contract_component {
     pub impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
-        /// Apply CRDT-based storage changes from a settled shard.
-        ///
-        /// Each slot is updated according to its registered CRDType:
-        /// - **Set/SetLock**: direct overwrite — `storage[key] = value`
-        /// - **Add**: delta merge — `delta = shard_value - initial_snapshot`,
-        ///   then `storage[key] = current + delta` (prevents double-counting)
-        /// - **Lock**: slot was reserved but value is discarded (unlock happens in caller)
+        /// Decrement init_count and reset slot to base Set when fully unlocked.
+        /// Lock/SetLock are exclusive (init_count can only be 1), so they always fully reset.
+        fn unlock_slot(
+            ref self: ComponentState<TContractState>,
+            slot_key: felt252,
+            contract_address: ContractAddress,
+        ) {
+            let (crd_type, init_count) = self.slots.read(slot_key);
+            let base_set = CRDType::Set((contract_address, slot_key));
+
+            if crd_type.is_lock() || init_count - 1 == 0 {
+                self.slots.write(slot_key, (base_set, 0));
+                if let CRDType::Add(_) = crd_type {
+                    self.initial_add_values.write(slot_key, 0);
+                }
+            } else {
+                self.slots.write(slot_key, (crd_type, init_count - 1));
+            }
+        }
+
         fn update_shard(
             ref self: ComponentState<TContractState>,
             storage_changes: Array<(felt252, felt252)>,
@@ -322,15 +290,14 @@ pub mod contract_component {
                 let (crd_type, _) = self.slots.read(key);
 
                 match crd_type {
-                    CRDType::SetLock |
-                    CRDType::Set => {
+                    CRDType::SetLock(_) |
+                    CRDType::Set(_) => {
                         storage_write_syscall(0, storage_address, value).unwrap_syscall();
                     },
-                    CRDType::Add => {
+                    CRDType::Add(_) => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
                         let initial_value = self.initial_add_values.read(key);
-                        // value is the absolute shard state; compute delta vs fork snapshot
                         let current_u256: u256 = current_value.into();
                         let shard_u256: u256 = value.into();
                         let initial_u256: u256 = initial_value.into();
@@ -340,12 +307,9 @@ pub mod contract_component {
                         let new_value: felt252 = sum.try_into().expect(Errors::ARITHMETIC_OVERFLOW);
                         storage_write_syscall(0, storage_address, new_value).unwrap_syscall();
                     },
-                    // Lock reserves the slot during shard execution but discards
-                    // the shard's value; the slot is unlocked in update_shard_state.
-                    CRDType::Lock => {},
+                    CRDType::Lock(_) => {},
                 }
             }
-            // self.emit(ContractComponentUpdated { storage_changes });
         }
     }
 }
