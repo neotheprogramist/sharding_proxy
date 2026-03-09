@@ -248,7 +248,7 @@ fn test_world_proxy_pn_counter() {
 
     // PN-Counter: both fields as Add (G-Counter).
     let layout = Model::<Resource>::layout();
-    let models = [(model_selector, layout).shard_pn([bob.into()].span())].span();
+    let models = [(model_selector, layout).shard_add([bob.into()].span())].span();
     world.dispatcher.request_sharding(proxy_addr, models);
 
     // Mainchain: P 1000→1020, N 200→210
