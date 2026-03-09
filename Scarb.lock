@@ -4,6 +4,7 @@ version = 1
 [[package]]
 name = "dojo"
 version = "1.8.0"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#d98217cd12bfffd9a2d38d0ee5300c175ea230e2"
 dependencies = [
  "dojo_cairo_macros",
 ]
@@ -11,10 +12,12 @@ dependencies = [
 [[package]]
 name = "dojo_cairo_macros"
 version = "1.8.0"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#d98217cd12bfffd9a2d38d0ee5300c175ea230e2"
 
 [[package]]
 name = "dojo_snf_test"
 version = "1.8.0"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#d98217cd12bfffd9a2d38d0ee5300c175ea230e2"
 dependencies = [
  "dojo",
  "snforge_std",
@@ -74,3 +77,4 @@ dependencies = [
 [[package]]
 name = "storage_commitment"
 version = "0.1.0"
+source = "git+https://github.com/feltroidprime/katana-tee.git?branch=feature%2Fsharding#801265106ad1228efb6baf9ba76e3124522330a4"
