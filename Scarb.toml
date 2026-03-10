@@ -12,9 +12,10 @@ snforge_std = "0.51.0"
 # storage_commitment = { path = "../../katana-tee" }
 storage_commitment = { git = "https://github.com/feltroidprime/katana-tee.git", branch = "feature/sharding" }
 # dojo = { path = "../../dojo/crates/dojo/core" }
-dojo = { git = "https://github.com/michalpalkowski/dojo", branch = "feature/sharding"}
+# Pin exact Dojo revision so the sharding test workspace uses the audited lock-enforcement code.
+dojo = { git = "https://github.com/michalpalkowski/dojo", rev = "3e8d0b9fc46830075945ef85971b72384832eb27" }
 # dojo_snf_test = { path = "../../dojo/crates/dojo/dojo-snf-test" }
-dojo_snf_test = { git = "https://github.com/michalpalkowski/dojo", branch = "feature/sharding"}
+dojo_snf_test = { git = "https://github.com/michalpalkowski/dojo", rev = "3e8d0b9fc46830075945ef85971b72384832eb27" }
 
 [dev-dependencies]
 snforge_std = "0.51.0"
