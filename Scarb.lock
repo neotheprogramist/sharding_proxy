@@ -77,4 +77,4 @@ dependencies = [
 [[package]]
 name = "storage_commitment"
 version = "0.1.0"
-source = "git+https://github.com/feltroidprime/katana-tee.git?branch=feature%2Fsharding#801265106ad1228efb6baf9ba76e3124522330a4"
+source = "git+https://github.com/cartridge-gg/katana-tee.git?branch=feature%2Fsharding#30bffb405618fd9d02770a2f4dad85293d3e4a08"
