@@ -22,9 +22,10 @@ mod errors {
 /// only editable by contract's owner.
 #[starknet::component]
 pub mod config_cpt {
-    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
-    use openzeppelin::access::ownable::interface::IOwnable;
+    use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin_access::ownable::OwnableComponent::{
+        InternalTrait as OwnableInternal, OwnableImpl,
+    };
     use starknet::ContractAddress;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use super::{IConfig, errors};

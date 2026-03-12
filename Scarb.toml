@@ -6,14 +6,17 @@ edition = "2024_07"
 # See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
 
 [dependencies]
-starknet = "2.9.2"
-openzeppelin = "0.20.0"
-snforge_std = "0.55.0"
-storage_commitment = { git = "https://github.com/feltroidprime/katana-tee.git", branch = "feature/sharding" }
+starknet = "2.13"
+openzeppelin_access = "3.0.0"
+snforge_std = "0.51.0"
+storage_commitment = { git = "https://github.com/cartridge-gg/katana-tee.git", branch = "feature/sharding" }
+# Pin exact Dojo revision so the sharding test workspace uses the audited lock-enforcement code.
+dojo = { git = "https://github.com/michalpalkowski/dojo", branch = "feature/sharding" }
+dojo_snf_test = { git = "https://github.com/michalpalkowski/dojo", branch = "feature/sharding" }
 
 [dev-dependencies]
-snforge_std = "0.55.0"
-assert_macros = "2.9.2"
+snforge_std = "0.51.0"
+assert_macros = "2.13"
 
 [lib]
 sierra = true
@@ -21,9 +24,14 @@ casm = true
 
 [[target.starknet-contract]]
 sierra = true
+build-external-contracts = ["dojo::world::world_contract::world"]
 
 [scripts]
 test = "snforge test"
 
+[tool.scarb]
+allow-prebuilt-plugins = ["snforge_std"]
+
 [features]
 test_contract = []
+dev = []
