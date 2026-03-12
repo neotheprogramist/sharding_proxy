@@ -4,7 +4,7 @@ version = 1
 [[package]]
 name = "dojo"
 version = "1.8.0"
-source = "git+https://github.com/michalpalkowski/dojo?rev=3e8d0b9fc46830075945ef85971b72384832eb27#3e8d0b9fc46830075945ef85971b72384832eb27"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#a8f85da1e7ef6e15207e04b223e752b12fc70d56"
 dependencies = [
  "dojo_cairo_macros",
 ]
@@ -12,12 +12,12 @@ dependencies = [
 [[package]]
 name = "dojo_cairo_macros"
 version = "1.8.0"
-source = "git+https://github.com/michalpalkowski/dojo?rev=3e8d0b9fc46830075945ef85971b72384832eb27#3e8d0b9fc46830075945ef85971b72384832eb27"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#a8f85da1e7ef6e15207e04b223e752b12fc70d56"
 
 [[package]]
 name = "dojo_snf_test"
 version = "1.8.0"
-source = "git+https://github.com/michalpalkowski/dojo?rev=3e8d0b9fc46830075945ef85971b72384832eb27#3e8d0b9fc46830075945ef85971b72384832eb27"
+source = "git+https://github.com/michalpalkowski/dojo?branch=feature%2Fsharding#a8f85da1e7ef6e15207e04b223e752b12fc70d56"
 dependencies = [
  "dojo",
  "snforge_std",
