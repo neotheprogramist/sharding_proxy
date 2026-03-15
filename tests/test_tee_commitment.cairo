@@ -299,7 +299,7 @@ fn test_update_with_proof_success_when_commitment_registered() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -339,7 +339,7 @@ fn test_update_with_proof_fails_when_commitment_not_registered() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
 }
 
@@ -378,7 +378,7 @@ fn test_update_with_proof_fails_when_wrong_commitment_registered() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
 }
 
@@ -421,7 +421,7 @@ fn test_update_with_proof_multiple_slots() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -468,7 +468,7 @@ fn test_update_with_proof_production_slot_value() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
     // Storage was updated (even though slot doesn't match counter slot, the flow succeeded)
@@ -551,7 +551,7 @@ fn test_fork_block_mismatch_reverts() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 200, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 200, 10,
         );
 }
 
@@ -593,7 +593,7 @@ fn test_fork_block_matches_init() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 100, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 100, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -649,7 +649,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_address,
-            storage_changes.clone(),
+            storage_changes.clone(), [].span(), array![], array![],
             shard_id,
             global_state_root,
             0,
@@ -671,7 +671,7 @@ fn test_replay_attack_prevented_same_shard_same_commitment() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes2, shard_id, global_state_root2, 0, 10,
+            setup.test_contract_address, storage_changes2.clone(), [].span(), array![], array![], shard_id, global_state_root2, 0, 10,
         );
     // Should panic with 'Component: No contracts' before reaching this point
 }
@@ -716,7 +716,7 @@ fn test_replay_attack_prevented_same_shard_different_value() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes1, shard_id, global_state_root1, 0, 10,
+            setup.test_contract_address, storage_changes1.clone(), [].span(), array![], array![], shard_id, global_state_root1, 0, 10,
         );
 
     // Second update with DIFFERENT value but SAME shard_id
@@ -733,7 +733,7 @@ fn test_replay_attack_prevented_same_shard_different_value() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes2, shard_id, global_state_root2, 0, 10,
+            setup.test_contract_address, storage_changes2.clone(), [].span(), array![], array![], shard_id, global_state_root2, 0, 10,
         );
     // Should panic with 'Component: No contracts' before reaching this point
 }
@@ -780,7 +780,7 @@ fn test_nonce_based_replay_protection() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -844,7 +844,7 @@ fn test_add_crdt_computes_delta_not_absolute() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -894,7 +894,7 @@ fn test_add_crdt_with_nonzero_initial_value() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -941,7 +941,7 @@ fn test_add_crdt_no_change_in_shard() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -1074,7 +1074,7 @@ fn test_full_shard_lifecycle_e2e() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes, shard_id, global_state_root, 0, 10,
+            setup.test_contract_address, storage_changes.clone(), [].span(), array![], array![], shard_id, global_state_root, 0, 10,
         );
     snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
 
@@ -1127,7 +1127,7 @@ fn test_concurrent_shards_settle_independently() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes1, 1, global_state_root1, 0, 10,
+            setup.test_contract_address, storage_changes1.clone(), [].span(), array![], array![], 1, global_state_root1, 0, 10,
         );
 
     // Settle second shard (shard_id = 2)
@@ -1143,7 +1143,7 @@ fn test_concurrent_shards_settle_independently() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes2, 2, global_state_root2, 0, 10,
+            setup.test_contract_address, storage_changes2.clone(), [].span(), array![], array![], 2, global_state_root2, 0, 10,
         );
     // Both shards settled successfully — counter should be 99 (last write wins for Set)
 }
@@ -1183,7 +1183,7 @@ fn test_settling_already_settled_shard_fails() {
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_address,
-            storage_changes.clone(),
+            storage_changes.clone(), [].span(), array![], array![],
             shard_id,
             global_state_root,
             0,
@@ -1203,6 +1203,6 @@ fn test_settling_already_settled_shard_fails() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_address, storage_changes2, shard_id, global_state_root2, 0, 10,
+            setup.test_contract_address, storage_changes2.clone(), [].span(), array![], array![], shard_id, global_state_root2, 0, 10,
         );
 }

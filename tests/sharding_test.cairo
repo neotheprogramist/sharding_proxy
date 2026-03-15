@@ -211,22 +211,26 @@ fn test_update_state() {
 
 #[test]
 fn test_ending_event() {
-    let (test_contract, mut test_spy) = deploy_contract_with_owner(OWNER, "test_contract");
+    let mut setup = setup();
+    let mut setup = initialize_shard(
+        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
+    );
 
-    let test_contract_dispatcher = ITestContractDispatcher { contract_address: test_contract };
-
-    snf::start_cheat_caller_address(test_contract_dispatcher.contract_address, OWNER);
-    test_contract_dispatcher.increment();
-    test_contract_dispatcher.increment();
-    test_contract_dispatcher.increment();
+    snf::start_cheat_caller_address(
+        setup.test_contract_dispatcher.contract_address, OWNER,
+    );
+    setup.test_contract_dispatcher.increment();
+    setup.test_contract_dispatcher.increment();
+    setup.test_contract_dispatcher.increment();
 
     let expected_increment = GameFinished { caller: OWNER };
 
-    test_spy
+    setup
+        .test_spy
         .assert_emitted(
             @array![
                 (
-                    test_contract_dispatcher.contract_address,
+                    setup.test_contract_dispatcher.contract_address,
                     TestContractEvent::GameFinished(expected_increment),
                 ),
             ],
@@ -629,7 +633,7 @@ fn test_too_many_setlock_updates() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes2, 1, 0xabc, 0, 10,
+            setup.test_contract_dispatcher.contract_address, storage_changes2.clone(), [].span(), array![], array![], 1, 0xabc, 0, 10,
         );
 }
 
@@ -667,7 +671,7 @@ fn test_too_many_add_updates() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes2, 1, 0xabc, 0, 10,
+            setup.test_contract_dispatcher.contract_address, storage_changes2.clone(), [].span(), array![], array![], 1, 0xabc, 0, 10,
         );
 }
 
@@ -981,7 +985,7 @@ fn test_update_contract_state_tee_success() {
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_dispatcher.contract_address,
-            storage_changes,
+            storage_changes.clone(), [].span(), array![], array![],
             1,
             global_state_root,
             0,
@@ -1010,7 +1014,7 @@ fn test_update_contract_state_tee_no_shard() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0, 0, 10,
+            setup.test_contract_dispatcher.contract_address, storage_changes.clone(), [].span(), array![], array![], 1, 0, 0, 10,
         );
 }
 
@@ -1035,7 +1039,7 @@ fn test_update_contract_state_tee_wrong_shard_id() {
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_dispatcher.contract_address,
-            storage_changes,
+            storage_changes.clone(), [].span(), array![], array![],
             2,
             0,
             0,
@@ -1044,7 +1048,7 @@ fn test_update_contract_state_tee_wrong_shard_id() {
 }
 
 #[test]
-#[should_panic(expected: ('Sharding: No storage changes',))]
+#[should_panic(expected: ('Sharding: Empty settlement',))]
 fn test_update_contract_state_tee_empty_changes() {
     let mut setup = setup();
 
@@ -1062,7 +1066,7 @@ fn test_update_contract_state_tee_empty_changes() {
     setup
         .shard_dispatcher
         .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes, 1, 0, 0, 10,
+            setup.test_contract_dispatcher.contract_address, storage_changes.clone(), [].span(), array![], array![], 1, 0, 0, 10,
         );
 }
 
@@ -1110,7 +1114,7 @@ fn test_update_contract_state_tee_multiple_slots() {
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_dispatcher.contract_address,
-            storage_changes,
+            storage_changes.clone(), [].span(), array![], array![],
             1,
             global_state_root,
             0,
@@ -1170,7 +1174,7 @@ fn tee_update_with_commitment(
         .shard_dispatcher
         .update_contract_state_tee(
             setup.test_contract_dispatcher.contract_address,
-            storage_changes,
+            storage_changes.clone(), [].span(), array![], array![],
             shard_id,
             global_state_root,
             0,

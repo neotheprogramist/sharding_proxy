@@ -76,8 +76,18 @@ pub trait IContractComponent<TContractState> {
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
     );
-    fn update_shard_state(ref self: TContractState, storage_changes: Array<(SlotKey, SlotValue)>);
-    fn cancel_shard_state(ref self: TContractState, slots: Span<felt252>);
+    fn settle_shard_changes(
+        ref self: TContractState,
+        shard_id: felt252,
+        slot_changes: Array<(felt252, felt252)>,
+        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+        dynamic_changes: Span<(felt252, felt252)>,
+        dynamic_tracking_proofs: Span<(felt252, felt252)>,
+    );
+    fn update_shard_state(
+        ref self: TContractState, shard_id: felt252, storage_changes: Array<(SlotKey, SlotValue)>,
+    );
+    fn cancel_shard_state(ref self: TContractState, shard_id: felt252, slots: Span<felt252>);
     fn request_sharding(
         ref self: TContractState,
         sharding_contract_address: ContractAddress,
@@ -106,7 +116,8 @@ pub mod contract_component {
         slots: Map<SlotValue, (CRDType, InitCount)>,
         sharding_contract_address: ContractAddress,
         /// Add CRDT snapshots for delta computation: delta = shard_value - initial.
-        initial_add_values: Map<SlotValue, felt252>,
+        initial_add_values: Map<(felt252, SlotValue), felt252>,
+        active_shard_slots: Map<(felt252, SlotValue), bool>,
     }
 
     #[event]
@@ -138,6 +149,7 @@ pub mod contract_component {
         pub const ADD_DELTA_UNDERFLOW: felt252 = 'Component: Add delta underflow';
         pub const ARITHMETIC_OVERFLOW: felt252 = 'Component: Arithmetic overflow';
         pub const SHARDING_PROXY_MISMATCH: felt252 = 'Component: Proxy mismatch';
+        pub const DYNAMIC_SETTLEMENT_UNSUPPORTED: felt252 = 'Component: Dyn settle';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -168,31 +180,35 @@ pub mod contract_component {
                 } else {
                     prev_crd_type.assert_is_base_set();
                 }
-
-                let new_init_count = safe_increment(init_count, 'Init count overflow');
-                self.slots.write(crd_type.slot(), (crd_type, new_init_count));
-
-                // For Add CRDTs, snapshot the current value ONLY on first lock (0→1).
-                // When multiple shards stack on the same Add slot, the initial snapshot
-                // must remain from the first shard — otherwise subsequent initializations
-                // would overwrite it and corrupt delta computation at settlement time.
-                if let CRDType::Add(_) = crd_type {
-                    if init_count == 0 {
-                        let storage_address: StorageAddress = crd_type.slot().try_into().unwrap();
-                        let current = storage_read_syscall(0, storage_address).unwrap_syscall();
-                        self.initial_add_values.write(crd_type.slot(), current);
-                    }
-                }
             }
 
             let sharding_dispatcher = IShardingDispatcher {
                 contract_address: sharding_contract_address,
             };
             sharding_dispatcher.initialize_sharding(contract_slots_changes);
+            let contract_address = get_contract_address();
+            let shard_id = sharding_dispatcher.get_shard_id(contract_address);
+
+            for crd_type in contract_slots_changes {
+                let crd_type = *crd_type;
+                let (_, init_count) = self.slots.read(crd_type.slot());
+                let new_init_count = safe_increment(init_count, 'Init count overflow');
+                self.slots.write(crd_type.slot(), (crd_type, new_init_count));
+                self.active_shard_slots.write((shard_id, crd_type.slot()), true);
+
+                // Multi-shard correctness requires an Add snapshot per shard session.
+                if let CRDType::Add(_) = crd_type {
+                    let storage_address: StorageAddress = crd_type.slot().try_into().unwrap();
+                    let current = storage_read_syscall(0, storage_address).unwrap_syscall();
+                    self.initial_add_values.write((shard_id, crd_type.slot()), current);
+                }
+            }
         }
 
         fn update_shard_state(
-            ref self: ComponentState<TContractState>, storage_changes: Array<(felt252, felt252)>,
+            ref self: ComponentState<TContractState>,
+            shard_id: felt252,
+            storage_changes: Array<(felt252, felt252)>,
         ) {
             let caller = get_caller_address();
             assert(caller == self.sharding_contract_address.read(), Errors::UNAUTHORIZED_CALLER);
@@ -206,23 +222,24 @@ pub mod contract_component {
             let mut locked_changes: Array<(felt252, felt252)> = ArrayTrait::new();
             for slot_entry in storage_changes.span() {
                 let (storage_key, storage_value) = *slot_entry;
-                let (_, init_count) = self.slots.read(storage_key);
-                if init_count != 0 {
+                if self.active_shard_slots.read((shard_id, storage_key)) {
                     locked_changes.append((storage_key, storage_value));
                 }
             }
 
             assert(locked_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
 
-            self.update_shard(locked_changes.clone(), contract_address);
+            self.update_shard(shard_id, locked_changes.clone(), contract_address);
 
             for slot_entry in locked_changes.span() {
                 let (storage_key, _) = *slot_entry;
-                self.unlock_slot(storage_key, contract_address);
+                self.unlock_slot(shard_id, storage_key, contract_address);
             }
         }
 
-        fn cancel_shard_state(ref self: ComponentState<TContractState>, slots: Span<felt252>) {
+        fn cancel_shard_state(
+            ref self: ComponentState<TContractState>, shard_id: felt252, slots: Span<felt252>,
+        ) {
             let caller = get_caller_address();
             assert(caller == self.sharding_contract_address.read(), Errors::UNAUTHORIZED_CALLER);
 
@@ -230,12 +247,25 @@ pub mod contract_component {
 
             for slot_key in slots {
                 let slot_key = *slot_key;
-                let (_, init_count) = self.slots.read(slot_key);
-                if init_count == 0 {
+                if !self.active_shard_slots.read((shard_id, slot_key)) {
                     continue;
                 }
-                self.unlock_slot(slot_key, contract_address);
+                self.unlock_slot(shard_id, slot_key, contract_address);
             }
+        }
+
+        fn settle_shard_changes(
+            ref self: ComponentState<TContractState>,
+            shard_id: felt252,
+            slot_changes: Array<(felt252, felt252)>,
+            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+            dynamic_changes: Span<(felt252, felt252)>,
+            dynamic_tracking_proofs: Span<(felt252, felt252)>,
+        ) {
+            assert(dynamic_members.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
+            assert(dynamic_changes.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
+            assert(dynamic_tracking_proofs.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
+            self.update_shard_state(shard_id, slot_changes);
         }
 
         fn request_sharding(
@@ -262,24 +292,28 @@ pub mod contract_component {
         /// Lock/SetLock are exclusive (init_count can only be 1), so they always fully reset.
         fn unlock_slot(
             ref self: ComponentState<TContractState>,
+            shard_id: felt252,
             slot_key: felt252,
             contract_address: ContractAddress,
         ) {
             let (crd_type, init_count) = self.slots.read(slot_key);
             let base_set = CRDType::Set((contract_address, slot_key));
+            self.active_shard_slots.write((shard_id, slot_key), false);
 
             if crd_type.is_lock() || init_count - 1 == 0 {
                 self.slots.write(slot_key, (base_set, 0));
-                if let CRDType::Add(_) = crd_type {
-                    self.initial_add_values.write(slot_key, 0);
-                }
             } else {
                 self.slots.write(slot_key, (crd_type, init_count - 1));
+            }
+
+            if let CRDType::Add(_) = crd_type {
+                self.initial_add_values.write((shard_id, slot_key), 0);
             }
         }
 
         fn update_shard(
             ref self: ComponentState<TContractState>,
+            shard_id: felt252,
             storage_changes: Array<(felt252, felt252)>,
             contract_address: ContractAddress,
         ) {
@@ -297,7 +331,7 @@ pub mod contract_component {
                     CRDType::Add(_) => {
                         let current_value = storage_read_syscall(0, storage_address)
                             .unwrap_syscall();
-                        let initial_value = self.initial_add_values.read(key);
+                        let initial_value = self.initial_add_values.read((shard_id, key));
                         let current_u256: u256 = current_value.into();
                         let shard_u256: u256 = value.into();
                         let initial_u256: u256 = initial_value.into();

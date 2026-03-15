@@ -4,11 +4,12 @@
 //! → proxy settlement → world.update_shard_state → model values updated.
 
 use dojo::model::{Model, ModelStorage, ModelStorageTest};
-use dojo::sharding::component::{IContractComponentDispatcher, IContractComponentDispatcherTrait};
 use dojo::sharding::compute_dojo_field_slot;
-use dojo::sharding::request::{IntoShardField, IntoShardModel, ShardModel};
+use dojo::sharding::request::{
+    CRDVariant, IntoShardField, IntoShardModel, ShardCoverage, ShardFieldSelection, ShardModel,
+};
 use dojo::utils::entity_id_from_keys;
-use dojo::world::IWorldDispatcherTrait;
+use dojo::world::{IShardingProxyDispatcher, IShardingProxyDispatcherTrait, IWorldDispatcherTrait};
 use dojo_snf_test::world::{NamespaceDef, TestResource, spawn_test_world};
 use sharding_tests::config::{IConfigDispatcher, IConfigDispatcherTrait};
 use sharding_tests::dojo_test_model::Resource;
@@ -115,11 +116,10 @@ fn test_world_proxy_set_round_trip() {
     let entity_id = entity_id_from_keys(@bob);
     let slot_gold = compute_dojo_field_slot(model_selector, entity_id, sel_gold);
 
-    // The proxy calls world.update_shard_state(changes).
-    // Simulate: cheat caller to be the proxy, then call update_shard_state on the world.
-    let sharding = IContractComponentDispatcher { contract_address: world_address };
+    // The proxy calls the world's sharding-proxy ABI.
+    let sharding = IShardingProxyDispatcher { contract_address: world_address };
     snf::start_cheat_caller_address(world_address, proxy_addr);
-    sharding.update_shard_state(array![(slot_gold, 999)]);
+    sharding.settle_shard_changes(1, array![(slot_gold, 999)], [].span(), [].span(), [].span());
     snf::stop_cheat_caller_address(world_address);
 
     let result: Resource = world.read_model(bob);
@@ -139,7 +139,13 @@ fn test_world_proxy_add_delta() {
 
     // Request sharding with Add CRDT.
     let layout = Model::<Resource>::layout();
-    let models = [(model_selector, layout).shard_add([bob.into()].span())].span();
+    let models = [(
+        model_selector, layout,
+    )
+        .shard_with(
+            [bob.into()].span(), CRDVariant::Add, ShardFieldSelection::AutoDeterministic,
+        )]
+        .span();
     world.dispatcher.request_sharding(proxy_addr, models);
 
     // Mainchain changes gold from 100 → 120 while shard is active.
@@ -151,9 +157,9 @@ fn test_world_proxy_add_delta() {
     let entity_id = entity_id_from_keys(@bob);
     let slot_gold = compute_dojo_field_slot(model_selector, entity_id, sel_gold);
 
-    let sharding = IContractComponentDispatcher { contract_address: world_address };
+    let sharding = IShardingProxyDispatcher { contract_address: world_address };
     snf::start_cheat_caller_address(world_address, proxy_addr);
-    sharding.update_shard_state(array![(slot_gold, 150)]);
+    sharding.settle_shard_changes(1, array![(slot_gold, 150)], [].span(), [].span(), [].span());
     snf::stop_cheat_caller_address(world_address);
 
     // Expected: current(120) + (shard(150) - initial(100)) = 170
@@ -179,6 +185,7 @@ fn test_world_proxy_per_field_mixed() {
             selector: model_selector,
             keys: [bob.into()].span(),
             fields: [sel_gold.as_add(), sel_wood.as_set()].span(),
+            coverage: ShardCoverage::Full,
         },
     ]
         .span();
@@ -193,9 +200,10 @@ fn test_world_proxy_per_field_mixed() {
     let slot_gold = compute_dojo_field_slot(model_selector, entity_id, sel_gold);
     let slot_wood = compute_dojo_field_slot(model_selector, entity_id, sel_wood);
 
-    let sharding = IContractComponentDispatcher { contract_address: world_address };
+    let sharding = IShardingProxyDispatcher { contract_address: world_address };
     snf::start_cheat_caller_address(world_address, proxy_addr);
-    sharding.update_shard_state(array![(slot_gold, 150), (slot_wood, 999)]);
+    sharding
+        .settle_shard_changes(1, array![(slot_gold, 150), (slot_wood, 999)], [].span(), [].span(), [].span());
     snf::stop_cheat_caller_address(world_address);
 
     // gold: current(120) + (shard(150) - initial(100)) = 170
@@ -225,9 +233,9 @@ fn test_world_proxy_cancel() {
     let slot_gold = compute_dojo_field_slot(model_selector, entity_id, sel_gold);
     let slot_wood = compute_dojo_field_slot(model_selector, entity_id, sel_wood);
 
-    let sharding = IContractComponentDispatcher { contract_address: world_address };
+    let sharding = IShardingProxyDispatcher { contract_address: world_address };
     snf::start_cheat_caller_address(world_address, proxy_addr);
-    sharding.cancel_shard_state(array![slot_gold, slot_wood].span());
+    sharding.cancel_shard_state(1, array![slot_gold, slot_wood].span());
     snf::stop_cheat_caller_address(world_address);
 
     let result: Resource = world.read_model(bob);
@@ -248,7 +256,13 @@ fn test_world_proxy_pn_counter() {
 
     // PN-Counter: both fields as Add (G-Counter).
     let layout = Model::<Resource>::layout();
-    let models = [(model_selector, layout).shard_add([bob.into()].span())].span();
+    let models = [(
+        model_selector, layout,
+    )
+        .shard_with(
+            [bob.into()].span(), CRDVariant::Add, ShardFieldSelection::AutoDeterministic,
+        )]
+        .span();
     world.dispatcher.request_sharding(proxy_addr, models);
 
     // Mainchain: P 1000→1020, N 200→210
@@ -261,9 +275,10 @@ fn test_world_proxy_pn_counter() {
     let slot_gold = compute_dojo_field_slot(model_selector, entity_id, sel_gold);
     let slot_wood = compute_dojo_field_slot(model_selector, entity_id, sel_wood);
 
-    let sharding = IContractComponentDispatcher { contract_address: world_address };
+    let sharding = IShardingProxyDispatcher { contract_address: world_address };
     snf::start_cheat_caller_address(world_address, proxy_addr);
-    sharding.update_shard_state(array![(slot_gold, 1050), (slot_wood, 230)]);
+    sharding
+        .settle_shard_changes(1, array![(slot_gold, 1050), (slot_wood, 230)], [].span(), [].span(), [].span());
     snf::stop_cheat_caller_address(world_address);
 
     // P: current(1020) + (shard(1050) - initial(1000)) = 1070

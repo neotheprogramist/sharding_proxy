@@ -19,7 +19,11 @@ pub trait ISharding<TContractState> {
     ///
     /// # Arguments
     /// * `contract_address` - The game contract to update
-    /// * `storage_changes` - Array of (key, value) pairs to update
+    /// * `slot_changes` - Deterministic slot changes forwarded to the game contract
+    /// * `dynamic_members` - Dynamic member scopes for `dynamic_changes`
+    /// * `dynamic_changes` - Final raw slot/value pairs for each dynamic member
+    /// * `dynamic_tracking_proofs` - Proved `(slot, value)` pairs for the changed-slot
+    ///   tracking metadata of each dynamic member
     /// * `shard_id` - The shard ID for verification
     /// * `global_state_root` - The state root from TEE attestation
     /// * `fork_block_number` - The block Katana forked from (attested by TEE, verified by SP1)
@@ -28,7 +32,10 @@ pub trait ISharding<TContractState> {
     fn update_contract_state_tee(
         ref self: TContractState,
         contract_address: ContractAddress,
-        storage_changes: Array<(felt252, felt252)>,
+        slot_changes: Array<(felt252, felt252)>,
+        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+        dynamic_changes: Array<(felt252, felt252)>,
+        dynamic_tracking_proofs: Array<(felt252, felt252)>,
         shard_id: felt252,
         global_state_root: felt252,
         fork_block_number: u64,
@@ -72,7 +79,10 @@ pub trait IShardingDev<TContractState> {
     fn update_contract_state_dev(
         ref self: TContractState,
         contract_address: ContractAddress,
-        storage_changes: Array<(felt252, felt252)>,
+        slot_changes: Array<(felt252, felt252)>,
+        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+        dynamic_changes: Array<(felt252, felt252)>,
+        dynamic_tracking_proofs: Array<(felt252, felt252)>,
         shard_id: felt252,
         fork_block_number: u64,
         end_block_number: u64,
@@ -83,13 +93,14 @@ pub trait IShardingDev<TContractState> {
 pub mod sharding {
     use core::poseidon::poseidon_hash_span;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use dojo::world::{
+        IShardingProxyDispatcher, IShardingProxyDispatcherTrait,
+    };
     use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
     use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::config::config_cpt;
     use sharding_tests::config::config_cpt::InternalTrait as ConfigInternal;
-    use sharding_tests::contract_component::{
-        CRDType, IContractComponentDispatcher, IContractComponentDispatcherTrait,
-    };
+    use sharding_tests::contract_component::CRDType;
     use sharding_tests::shard_output::ShardOutput;
     use sharding_tests::storage_commitment::{
         IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
@@ -168,6 +179,7 @@ pub mod sharding {
         pub const COMMITMENT_NOT_VERIFIED: felt252 = 'Sharding: Commitment unverified';
         pub const FORK_BLOCK_MISMATCH: felt252 = 'Sharding: Fork block mismatch';
         pub const END_BLOCK_NOT_PROVEN: felt252 = 'Sharding: End block not proven';
+        pub const EMPTY_SETTLEMENT: felt252 = 'Sharding: Empty settlement';
     }
 
     #[constructor]
@@ -272,10 +284,12 @@ pub mod sharding {
 
                     self.active_shards.write((contract_address, shard_id), false);
 
-                    let contract_dispatcher = IContractComponentDispatcher {
+                    let contract_dispatcher = IShardingProxyDispatcher {
                         contract_address: contract_address,
                     };
-                    contract_dispatcher.update_shard_state(storage_changes);
+                    contract_dispatcher.settle_shard_changes(
+                        shard_id, storage_changes, [].span(), [].span(), [].span(),
+                    );
                     processed_count += 1;
                 }
             }
@@ -296,7 +310,10 @@ pub mod sharding {
         fn update_contract_state_tee(
             ref self: ContractState,
             contract_address: ContractAddress,
-            storage_changes: Array<(felt252, felt252)>,
+            slot_changes: Array<(felt252, felt252)>,
+            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+            dynamic_changes: Array<(felt252, felt252)>,
+            dynamic_tracking_proofs: Array<(felt252, felt252)>,
             shard_id: felt252,
             global_state_root: felt252,
             fork_block_number: u64,
@@ -314,15 +331,19 @@ pub mod sharding {
             // C2: Verify shard ending was proven (end_block > 0 means SP1 verified event inclusion)
             assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
 
-            // Verify we have storage changes
-            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+            assert(
+                slot_changes.len() != 0 || dynamic_members.len() != 0,
+                Errors::EMPTY_SETTLEMENT,
+            );
 
             let storage_commitment_registry = IStorageCommitmentDispatcher {
                 contract_address: self.storage_commitment_registry.read(),
             };
 
             // Compute storage_commitment = hash(keys || values)
-            let storage_commitment = self.compute_storage_commitment(storage_changes.span());
+            let storage_commitment = self.compute_storage_commitment(
+                slot_changes.span(), dynamic_changes.span(), dynamic_tracking_proofs.span(),
+            );
 
             // Verify: recomputes full hash with stored nonce and checks registration
             // end_block_number is cryptographically bound in the commitment by SP1
@@ -339,11 +360,16 @@ pub mod sharding {
             // Deactivate the shard after successful verification (prevents replay)
             self.active_shards.write((contract_address, shard_id), false);
 
-            // Forward to the contract component
-            let contract_dispatcher = IContractComponentDispatcher {
+            let contract_dispatcher = IShardingProxyDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.update_shard_state(storage_changes);
+            contract_dispatcher.settle_shard_changes(
+                shard_id,
+                slot_changes,
+                dynamic_members,
+                dynamic_changes.span(),
+                dynamic_tracking_proofs.span(),
+            );
         }
 
         fn cancel_shard(
@@ -358,10 +384,10 @@ pub mod sharding {
             assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
             self.active_shards.write((contract_address, shard_id), false);
 
-            let contract_dispatcher = IContractComponentDispatcher {
+            let contract_dispatcher = IShardingProxyDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.cancel_shard_state(slots);
+            contract_dispatcher.cancel_shard_state(shard_id, slots);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
@@ -397,7 +423,10 @@ pub mod sharding {
         fn update_contract_state_dev(
             ref self: ContractState,
             contract_address: ContractAddress,
-            storage_changes: Array<(felt252, felt252)>,
+            slot_changes: Array<(felt252, felt252)>,
+            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
+            dynamic_changes: Array<(felt252, felt252)>,
+            dynamic_tracking_proofs: Array<(felt252, felt252)>,
             shard_id: felt252,
             fork_block_number: u64,
             end_block_number: u64,
@@ -410,14 +439,20 @@ pub mod sharding {
                 Errors::FORK_BLOCK_MISMATCH,
             );
             assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
-            assert(storage_changes.len() != 0, Errors::NO_STORAGE_CHANGES);
+            assert(slot_changes.len() != 0 || dynamic_members.len() != 0, Errors::EMPTY_SETTLEMENT);
 
             self.active_shards.write((contract_address, shard_id), false);
 
-            let contract_dispatcher = IContractComponentDispatcher {
+            let contract_dispatcher = IShardingProxyDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.update_shard_state(storage_changes);
+            contract_dispatcher.settle_shard_changes(
+                shard_id,
+                slot_changes,
+                dynamic_members,
+                dynamic_changes.span(),
+                dynamic_tracking_proofs.span(),
+            );
         }
     }
 
@@ -426,19 +461,38 @@ pub mod sharding {
         /// Computes storage commitment as poseidon_hash(keys || values).
         /// Matches Rust: compute_storage_commitment() in katana-tee.
         fn compute_storage_commitment(
-            self: @ContractState, storage_changes: Span<(felt252, felt252)>,
+            self: @ContractState,
+            slot_changes: Span<(felt252, felt252)>,
+            dynamic_changes: Span<(felt252, felt252)>,
+            dynamic_tracking_proofs: Span<(felt252, felt252)>,
         ) -> felt252 {
             let mut data: Array<felt252> = ArrayTrait::new();
 
             // First all keys
-            for change in storage_changes {
+            for change in slot_changes {
                 let (key, _) = *change;
+                data.append(key);
+            }
+            for change in dynamic_changes {
+                let (key, _) = *change;
+                data.append(key);
+            }
+            for proof in dynamic_tracking_proofs {
+                let (key, _) = *proof;
                 data.append(key);
             }
 
             // Then all values
-            for change in storage_changes {
+            for change in slot_changes {
                 let (_, value) = *change;
+                data.append(value);
+            }
+            for change in dynamic_changes {
+                let (_, value) = *change;
+                data.append(value);
+            }
+            for proof in dynamic_tracking_proofs {
+                let (_, value) = *proof;
                 data.append(value);
             }
 
