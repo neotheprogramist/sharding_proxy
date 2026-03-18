@@ -106,7 +106,7 @@ pub mod test_contract {
             // Convert to u256 for modulo operation (felt252 doesn't support %)
             let counter_u256: u256 = self.counter.read().into();
             if counter_u256 > 0 && counter_u256 % 3 == 0 {
-                self.contract_component.end_shard();
+                self.contract_component.end_current_shard();
                 self.emit(GameFinished { caller });
             }
         }

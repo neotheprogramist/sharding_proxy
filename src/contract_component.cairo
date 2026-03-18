@@ -76,14 +76,6 @@ pub trait IContractComponent<TContractState> {
         sharding_contract_address: ContractAddress,
         contract_slots_changes: Span<CRDType>,
     );
-    fn settle_shard_changes(
-        ref self: TContractState,
-        shard_id: felt252,
-        slot_changes: Array<(felt252, felt252)>,
-        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-        dynamic_changes: Span<(felt252, felt252)>,
-        dynamic_tracking_proofs: Span<(felt252, felt252)>,
-    );
     fn update_shard_state(
         ref self: TContractState, shard_id: felt252, storage_changes: Array<(SlotKey, SlotValue)>,
     );
@@ -93,7 +85,7 @@ pub trait IContractComponent<TContractState> {
         sharding_contract_address: ContractAddress,
         storage_slots: Span<CRDType>,
     );
-    fn end_shard(ref self: TContractState);
+    fn end_shard(ref self: TContractState, shard_id: felt252);
 }
 
 #[starknet::component]
@@ -149,7 +141,6 @@ pub mod contract_component {
         pub const ADD_DELTA_UNDERFLOW: felt252 = 'Component: Add delta underflow';
         pub const ARITHMETIC_OVERFLOW: felt252 = 'Component: Arithmetic overflow';
         pub const SHARDING_PROXY_MISMATCH: felt252 = 'Component: Proxy mismatch';
-        pub const DYNAMIC_SETTLEMENT_UNSUPPORTED: felt252 = 'Component: Dyn settle';
     }
 
     #[embeddable_as(ContractComponentImpl)]
@@ -254,20 +245,6 @@ pub mod contract_component {
             }
         }
 
-        fn settle_shard_changes(
-            ref self: ComponentState<TContractState>,
-            shard_id: felt252,
-            slot_changes: Array<(felt252, felt252)>,
-            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-            dynamic_changes: Span<(felt252, felt252)>,
-            dynamic_tracking_proofs: Span<(felt252, felt252)>,
-        ) {
-            assert(dynamic_members.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
-            assert(dynamic_changes.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
-            assert(dynamic_tracking_proofs.len() == 0, Errors::DYNAMIC_SETTLEMENT_UNSUPPORTED);
-            self.update_shard_state(shard_id, slot_changes);
-        }
-
         fn request_sharding(
             ref self: ComponentState<TContractState>,
             sharding_contract_address: ContractAddress,
@@ -276,11 +253,11 @@ pub mod contract_component {
             self.initialize_shard(sharding_contract_address, storage_slots);
         }
 
-        fn end_shard(ref self: ComponentState<TContractState>) {
+        fn end_shard(ref self: ComponentState<TContractState>, shard_id: felt252) {
             let sharding_address = self.sharding_contract_address.read();
             assert(!sharding_address.is_zero(), Errors::NOT_INITIALIZED);
             let sharding_dispatcher = IShardingDispatcher { contract_address: sharding_address };
-            sharding_dispatcher.end_shard();
+            sharding_dispatcher.end_shard(shard_id);
         }
     }
 
@@ -288,6 +265,17 @@ pub mod contract_component {
     pub impl InternalImpl<
         TContractState, +HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
+        /// End the current (latest) shard by reading shard_id from the proxy.
+        /// Convenience for game contracts that only run one shard at a time.
+        fn end_current_shard(ref self: ComponentState<TContractState>) {
+            let sharding_address = self.sharding_contract_address.read();
+            assert(!sharding_address.is_zero(), Errors::NOT_INITIALIZED);
+            let mut sharding_dispatcher = IShardingDispatcher { contract_address: sharding_address };
+            let contract_address = get_contract_address();
+            let shard_id = sharding_dispatcher.get_shard_id(contract_address);
+            sharding_dispatcher.end_shard(shard_id);
+        }
+
         /// Decrement init_count and reset slot to base Set when fully unlocked.
         /// Lock/SetLock are exclusive (init_count can only be 1), so they always fully reset.
         fn unlock_slot(

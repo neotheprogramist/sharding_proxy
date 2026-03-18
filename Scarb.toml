@@ -39,4 +39,4 @@ dojo_snf_test = { path = "../externals/dojo/crates/dojo/dojo-snf-test" }
 
 [features]
 test_contract = []
-dev = []
+dev = ["dojo/dev"]

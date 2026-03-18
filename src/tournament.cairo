@@ -121,7 +121,7 @@ pub mod tournament {
         fn end_tournament(ref self: ContractState) {
             self.tournament_active.write(0);
             let caller = get_caller_address();
-            self.contract_component.end_shard();
+            self.contract_component.end_current_shard();
             self.emit(TournamentFinished { caller });
         }
 

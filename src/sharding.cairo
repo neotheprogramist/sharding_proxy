@@ -11,41 +11,13 @@ pub struct StorageSlotWithContract {
 pub trait ISharding<TContractState> {
     fn initialize_sharding(ref self: TContractState, storage_slots: Span<CRDType>);
 
-    fn update_contract_state_snos(
-        ref self: TContractState, snos_output: Span<felt252>, shard_id: felt252,
-    );
+    fn end_shard(ref self: TContractState, shard_id: felt252);
 
-    /// Update contract state with pre-verified storage changes from TEE.
-    ///
-    /// # Arguments
-    /// * `contract_address` - The game contract to update
-    /// * `slot_changes` - Deterministic slot changes forwarded to the game contract
-    /// * `dynamic_members` - Dynamic member scopes for `dynamic_changes`
-    /// * `dynamic_changes` - Final raw slot/value pairs for each dynamic member
-    /// * `dynamic_tracking_proofs` - Proved `(slot, value)` pairs for the changed-slot
-    ///   tracking metadata of each dynamic member
-    /// * `shard_id` - The shard ID for verification
-    /// * `global_state_root` - The state root from TEE attestation
-    /// * `fork_block_number` - The block Katana forked from (attested by TEE, verified by SP1)
-    /// * `end_block_number` - The shard block where ShardFinished event was proven (from SP1
-    /// journal)
-    fn update_contract_state_tee(
-        ref self: TContractState,
-        contract_address: ContractAddress,
-        slot_changes: Array<(felt252, felt252)>,
-        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-        dynamic_changes: Array<(felt252, felt252)>,
-        dynamic_tracking_proofs: Array<(felt252, felt252)>,
-        shard_id: felt252,
-        global_state_root: felt252,
-        fork_block_number: u64,
-        end_block_number: u64,
+    /// Mark a shard as inactive after settlement completes.
+    /// Called by the world contract's sharding_component after apply_settle().
+    fn deactivate_shard(
+        ref self: TContractState, game_contract: ContractAddress, shard_id: felt252,
     );
-
-    /// Get the init block number stored when a shard was initialized.
-    fn get_init_block_number(
-        self: @TContractState, contract_address: ContractAddress, shard_id: felt252,
-    ) -> u64;
 
     /// Cancel an active shard without settlement. Unlocks all specified slots
     /// without modifying storage values. Use when Katana TEE crashed and data is lost.
@@ -64,47 +36,26 @@ pub trait ISharding<TContractState> {
         self: @TContractState, contract_address: ContractAddress, shard_id: felt252,
     ) -> bool;
 
-    /// Signal that a shard has finished. Emits `ShardFinished` event
-    /// which the operator service monitors for settlement.
-    /// Called by the game contract (via contract_component).
-    fn end_shard(ref self: TContractState);
-}
-
-/// Dev-only settlement interface (compiled only with `--features dev`).
-/// Applies CRDT state changes WITHOUT requiring TEE attestation or SP1 proof.
-/// Owner-only access. Never available in production builds.
-#[cfg(feature: 'dev')]
-#[starknet::interface]
-pub trait IShardingDev<TContractState> {
-    fn update_contract_state_dev(
+    /// Notify the proxy that a shard has been requested on a world contract.
+    /// Called by the world contract after locking entities and allocating shard_id.
+    /// Emits `ShardingRequested` so the operator can discover new shards.
+    fn notify_shard_requested(
         ref self: TContractState,
-        contract_address: ContractAddress,
-        slot_changes: Array<(felt252, felt252)>,
-        dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-        dynamic_changes: Array<(felt252, felt252)>,
-        dynamic_tracking_proofs: Array<(felt252, felt252)>,
         shard_id: felt252,
-        fork_block_number: u64,
-        end_block_number: u64,
+        entities: Span<felt252>,
+        entity_keys_flat: Span<felt252>,
     );
 }
 
 #[starknet::contract]
 pub mod sharding {
-    use core::poseidon::poseidon_hash_span;
     use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use dojo::world::{
-        IShardingProxyDispatcher, IShardingProxyDispatcherTrait,
-    };
+    use dojo::world::{IShardingSettlementDispatcher, IShardingSettlementDispatcherTrait};
     use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
     use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::config::config_cpt;
     use sharding_tests::config::config_cpt::InternalTrait as ConfigInternal;
     use sharding_tests::contract_component::CRDType;
-    use sharding_tests::shard_output::ShardOutput;
-    use sharding_tests::storage_commitment::{
-        IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
-    };
     use sharding_tests::utils::safe_increment;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::{ContractAddress, get_caller_address};
@@ -122,34 +73,28 @@ pub mod sharding {
     struct Storage {
         shard_id: Map<ContractAddress, shard_id>,
         /// Tracks which (game_contract, shard_id) pairs are currently active.
-        /// Set to true on initialize, false on settlement/cancel.
+        /// Set to true on initialize, false on deactivate/cancel.
         active_shards: Map<(ContractAddress, felt252), bool>,
-        /// Stores the block number at which each shard was initialized.
-        /// Used to verify that TEE forked at the correct block (anti-fraud).
-        init_block_numbers: Map<(ContractAddress, felt252), u64>,
         owner: ContractAddress,
         #[substorage(v0)]
         ownable: ownable_cpt::Storage,
         #[substorage(v0)]
         config: config_cpt::Storage,
-        storage_commitment_registry: ContractAddress,
     }
+
+    /// Maximum entity_keys_flat felts per chunk event (stay well under Starknet's 300 data limit).
+    const MAX_KEYS_PER_CHUNK: u32 = 250;
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         ShardingRequested: ShardingRequested,
+        ShardingEntityKeysChunk: ShardingEntityKeysChunk,
         ShardFinished: ShardFinished,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
         ConfigEvent: config_cpt::Event,
-        StorageCommitmentVerified: StorageCommitmentVerified,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    pub struct StorageCommitmentVerified {
-        pub storage_commitment: felt252,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -157,9 +102,19 @@ pub mod sharding {
         #[key]
         pub game_contract: ContractAddress,
         pub shard_id: felt252,
+        pub entities: Span<felt252>,
+        /// Number of `ShardingEntityKeysChunk` events that follow (0 if no keys).
+        pub entity_key_chunks: u32,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ShardingEntityKeysChunk {
+        #[key]
+        pub game_contract: ContractAddress,
+        #[key]
+        pub shard_id: felt252,
         pub chunk_index: u32,
-        pub total_chunks: u32,
-        pub storage_slots: Span<CRDType>,
+        pub entity_keys_flat: Span<felt252>,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -172,24 +127,12 @@ pub mod sharding {
     pub mod Errors {
         pub const SHARD_NOT_ACTIVE: felt252 = 'Sharding: Shard not active';
         pub const SHARD_ID_NOT_SET: felt252 = 'Sharding: Shard id not set';
-        pub const NO_CONTRACTS_SUBMITTED: felt252 = 'Sharding: No contracts';
-        pub const NO_STORAGE_CHANGES: felt252 = 'Sharding: No storage changes';
         pub const SHARD_ID_OVERFLOW: felt252 = 'Sharding: Shard ID overflow';
-        pub const INVALID_CONTRACT_ADDR: felt252 = 'Sharding: Invalid contract addr';
-        pub const COMMITMENT_NOT_VERIFIED: felt252 = 'Sharding: Commitment unverified';
-        pub const FORK_BLOCK_MISMATCH: felt252 = 'Sharding: Fork block mismatch';
-        pub const END_BLOCK_NOT_PROVEN: felt252 = 'Sharding: End block not proven';
-        pub const EMPTY_SETTLEMENT: felt252 = 'Sharding: Empty settlement';
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-        storage_commitment_registry: ContractAddress,
-    ) {
+    fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.ownable.initializer(owner);
-        self.storage_commitment_registry.write(storage_commitment_registry);
     }
 
     #[abi(embed_v0)]
@@ -202,174 +145,27 @@ pub mod sharding {
             let new_shard_id = safe_increment(current_shard_id, Errors::SHARD_ID_OVERFLOW);
             self.shard_id.write(caller, new_shard_id);
             self.active_shards.write((caller, new_shard_id), true);
-            let block_number = starknet::get_block_info().unbox().block_number;
-            self.init_block_numbers.write((caller, new_shard_id), block_number);
 
-            // Emit in chunks to stay under Starknet's 300-felt event data limit.
-            // Each CRDType serializes to 3 felts; data includes shard_id(1) + chunk_index(1)
-            // + total_chunks(1) + span_length(1) = 4 overhead. Max = (300 - 4) / 3 = 98.
-            // Use 90 for safety margin.
-            let max_per_event: u32 = 90;
-            let total = storage_slots.len();
-            let total_chunks: u32 = if total == 0 {
-                1
-            } else {
-                (total + max_per_event - 1) / max_per_event
-            };
-
-            let mut chunk_index: u32 = 0;
-            let mut offset: u32 = 0;
-            if total == 0 {
-                self
-                    .emit(
-                        ShardingRequested {
-                            game_contract: caller,
-                            shard_id: new_shard_id,
-                            chunk_index: 0,
-                            total_chunks: 1,
-                            storage_slots,
-                        },
-                    );
-            } else {
-                while offset < total {
-                    let remaining = total - offset;
-                    let chunk_size = if remaining < max_per_event {
-                        remaining
-                    } else {
-                        max_per_event
-                    };
-                    self
-                        .emit(
-                            ShardingRequested {
-                                game_contract: caller,
-                                shard_id: new_shard_id,
-                                chunk_index,
-                                total_chunks,
-                                storage_slots: storage_slots.slice(offset, chunk_size),
-                            },
-                        );
-                    offset += chunk_size;
-                    chunk_index += 1;
-                };
-            }
+            self.emit(ShardingRequested {
+                game_contract: caller,
+                shard_id: new_shard_id,
+                entities: [].span(),
+                entity_key_chunks: 0,
+            });
         }
 
-        fn update_contract_state_snos(
-            ref self: ContractState, snos_output: Span<felt252>, shard_id: felt252,
-        ) {
-            // TODO: Implement SNOS path
-            core::panic_with_felt252('SNOS path not implemented');
-
+        fn end_shard(ref self: ContractState, shard_id: felt252) {
             self.config.assert_only_owner_or_operator();
-            let mut snos_output = snos_output;
-            let program_output_struct: ShardOutput = Serde::deserialize(ref snos_output).unwrap();
-
-            assert(
-                program_output_struct.state_diff.span().len() != 0, Errors::NO_CONTRACTS_SUBMITTED,
-            );
-            let mut processed_count: u32 = 0;
-            for contract in program_output_struct.state_diff.span() {
-                let contract_address: ContractAddress = (*contract.addr)
-                    .try_into()
-                    .expect(Errors::INVALID_CONTRACT_ADDR);
-
-                if self.active_shards.read((contract_address, shard_id)) {
-                    let mut storage_changes = ArrayTrait::new();
-                    for storage_change in contract.storage_changes.span() {
-                        let (storage_key, storage_value) = *storage_change;
-
-                        storage_changes.append((storage_key, storage_value));
-                    }
-                    assert(storage_changes.span().len() != 0, Errors::NO_STORAGE_CHANGES);
-
-                    self.active_shards.write((contract_address, shard_id), false);
-
-                    let contract_dispatcher = IShardingProxyDispatcher {
-                        contract_address: contract_address,
-                    };
-                    contract_dispatcher.settle_shard_changes(
-                        shard_id, storage_changes, [].span(), [].span(), [].span(),
-                    );
-                    processed_count += 1;
-                }
-            }
-            assert(processed_count != 0, Errors::SHARD_NOT_ACTIVE);
+            let caller = get_caller_address();
+            assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
+            self.emit(ShardFinished { game_contract: caller, shard_id });
         }
 
-        /// Update contract state with pre-verified storage changes from TEE.
-        ///
-        /// Flow:
-        /// 1. Compute storage_commitment = hash(keys || values)
-        /// 2. Call StorageCommitment.verify(storage_commitment, contract_address,
-        /// global_state_root)
-        ///    which internally computes full_commitment = hash(storage_commitment,
-        ///    contract_address, nonce, state_root)
-        ///    and checks if it was registered
-        /// 3. If verified, nonce is incremented and commitment is deleted
-        /// 4. Forward storage changes to contract
-        fn update_contract_state_tee(
-            ref self: ContractState,
-            contract_address: ContractAddress,
-            slot_changes: Array<(felt252, felt252)>,
-            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-            dynamic_changes: Array<(felt252, felt252)>,
-            dynamic_tracking_proofs: Array<(felt252, felt252)>,
-            shard_id: felt252,
-            global_state_root: felt252,
-            fork_block_number: u64,
-            end_block_number: u64,
+        fn deactivate_shard(
+            ref self: ContractState, game_contract: ContractAddress, shard_id: felt252,
         ) {
             self.config.assert_only_owner_or_operator();
-
-            // Verify this shard is active (replaces initializer + shard_id checks)
-            assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
-
-            // Verify fork block matches init block (anti-fraud: TEE-attested via SP1)
-            let expected_init_block = self.init_block_numbers.read((contract_address, shard_id));
-            assert(fork_block_number == expected_init_block, Errors::FORK_BLOCK_MISMATCH);
-
-            // C2: Verify shard ending was proven (end_block > 0 means SP1 verified event inclusion)
-            assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
-
-            assert(
-                slot_changes.len() != 0 || dynamic_members.len() != 0,
-                Errors::EMPTY_SETTLEMENT,
-            );
-
-            let storage_commitment_registry = IStorageCommitmentDispatcher {
-                contract_address: self.storage_commitment_registry.read(),
-            };
-
-            // Compute storage_commitment = hash(keys || values)
-            let storage_commitment = self.compute_storage_commitment(
-                slot_changes.span(), dynamic_changes.span(), dynamic_tracking_proofs.span(),
-            );
-
-            // Verify: recomputes full hash with stored nonce and checks registration
-            // end_block_number is cryptographically bound in the commitment by SP1
-            assert(
-                storage_commitment_registry
-                    .verify(
-                        storage_commitment, contract_address, global_state_root, end_block_number,
-                    ),
-                Errors::COMMITMENT_NOT_VERIFIED,
-            );
-
-            self.emit(StorageCommitmentVerified { storage_commitment });
-
-            // Deactivate the shard after successful verification (prevents replay)
-            self.active_shards.write((contract_address, shard_id), false);
-
-            let contract_dispatcher = IShardingProxyDispatcher {
-                contract_address: contract_address,
-            };
-            contract_dispatcher.settle_shard_changes(
-                shard_id,
-                slot_changes,
-                dynamic_members,
-                dynamic_changes.span(),
-                dynamic_tracking_proofs.span(),
-            );
+            self.active_shards.write((game_contract, shard_id), false);
         }
 
         fn cancel_shard(
@@ -384,10 +180,10 @@ pub mod sharding {
             assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
             self.active_shards.write((contract_address, shard_id), false);
 
-            let contract_dispatcher = IShardingProxyDispatcher {
+            let settlement_dispatcher = IShardingSettlementDispatcher {
                 contract_address: contract_address,
             };
-            contract_dispatcher.cancel_shard_state(shard_id, slots);
+            settlement_dispatcher.cancel_shard(shard_id);
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
@@ -402,102 +198,53 @@ pub mod sharding {
             self.active_shards.read((contract_address, shard_id))
         }
 
-        fn get_init_block_number(
-            self: @ContractState, contract_address: ContractAddress, shard_id: felt252,
-        ) -> u64 {
-            self.init_block_numbers.read((contract_address, shard_id))
-        }
-
-        fn end_shard(ref self: ContractState) {
+        fn notify_shard_requested(
+            ref self: ContractState,
+            shard_id: felt252,
+            entities: Span<felt252>,
+            entity_keys_flat: Span<felt252>,
+        ) {
             self.config.assert_only_owner_or_operator();
             let caller = get_caller_address();
-            let shard_id = self.shard_id.read(caller);
-            assert(shard_id != 0, Errors::SHARD_ID_NOT_SET);
-            self.emit(ShardFinished { game_contract: caller, shard_id });
-        }
-    }
+            self.active_shards.write((caller, shard_id), true);
 
-    #[cfg(feature: 'dev')]
-    #[abi(embed_v0)]
-    impl ShardingDevImpl of super::IShardingDev<ContractState> {
-        fn update_contract_state_dev(
-            ref self: ContractState,
-            contract_address: ContractAddress,
-            slot_changes: Array<(felt252, felt252)>,
-            dynamic_members: Span<dojo::world::ShardDynamicMemberChanges>,
-            dynamic_changes: Array<(felt252, felt252)>,
-            dynamic_tracking_proofs: Array<(felt252, felt252)>,
-            shard_id: felt252,
-            fork_block_number: u64,
-            end_block_number: u64,
-        ) {
-            self.ownable.assert_only_owner();
-
-            assert(self.active_shards.read((contract_address, shard_id)), Errors::SHARD_NOT_ACTIVE);
-            assert(
-                fork_block_number == self.init_block_numbers.read((contract_address, shard_id)),
-                Errors::FORK_BLOCK_MISMATCH,
-            );
-            assert(end_block_number != 0, Errors::END_BLOCK_NOT_PROVEN);
-            assert(slot_changes.len() != 0 || dynamic_members.len() != 0, Errors::EMPTY_SETTLEMENT);
-
-            self.active_shards.write((contract_address, shard_id), false);
-
-            let contract_dispatcher = IShardingProxyDispatcher {
-                contract_address: contract_address,
+            // Emit main event + chunked entity keys (Starknet event data limit = 300 felts).
+            let total_keys_len = entity_keys_flat.len();
+            let num_chunks: u32 = if total_keys_len == 0 {
+                0_u32
+            } else {
+                let full = total_keys_len / MAX_KEYS_PER_CHUNK;
+                if total_keys_len % MAX_KEYS_PER_CHUNK != 0 { full + 1 } else { full }
             };
-            contract_dispatcher.settle_shard_changes(
-                shard_id,
-                slot_changes,
-                dynamic_members,
-                dynamic_changes.span(),
-                dynamic_tracking_proofs.span(),
-            );
-        }
-    }
+            self
+                .emit(
+                    ShardingRequested {
+                        game_contract: caller, shard_id, entities, entity_key_chunks: num_chunks,
+                    },
+                );
 
-    #[generate_trait]
-    impl InternalImpl of InternalTrait {
-        /// Computes storage commitment as poseidon_hash(keys || values).
-        /// Matches Rust: compute_storage_commitment() in katana-tee.
-        fn compute_storage_commitment(
-            self: @ContractState,
-            slot_changes: Span<(felt252, felt252)>,
-            dynamic_changes: Span<(felt252, felt252)>,
-            dynamic_tracking_proofs: Span<(felt252, felt252)>,
-        ) -> felt252 {
-            let mut data: Array<felt252> = ArrayTrait::new();
-
-            // First all keys
-            for change in slot_changes {
-                let (key, _) = *change;
-                data.append(key);
-            }
-            for change in dynamic_changes {
-                let (key, _) = *change;
-                data.append(key);
-            }
-            for proof in dynamic_tracking_proofs {
-                let (key, _) = *proof;
-                data.append(key);
-            }
-
-            // Then all values
-            for change in slot_changes {
-                let (_, value) = *change;
-                data.append(value);
-            }
-            for change in dynamic_changes {
-                let (_, value) = *change;
-                data.append(value);
-            }
-            for proof in dynamic_tracking_proofs {
-                let (_, value) = *proof;
-                data.append(value);
-            }
-
-            // Convert felt252 to u256 (always safe - felt252 fits in u256)
-            poseidon_hash_span(data.span())
+            let mut chunk_idx: u32 = 0;
+            let mut key_offset: u32 = 0;
+            while key_offset < total_keys_len {
+                let remaining = total_keys_len - key_offset;
+                let chunk_size = if remaining < MAX_KEYS_PER_CHUNK {
+                    remaining
+                } else {
+                    MAX_KEYS_PER_CHUNK
+                };
+                let chunk = entity_keys_flat.slice(key_offset, chunk_size);
+                self
+                    .emit(
+                        ShardingEntityKeysChunk {
+                            game_contract: caller,
+                            shard_id,
+                            chunk_index: chunk_idx,
+                            entity_keys_flat: chunk,
+                        },
+                    );
+                key_offset += chunk_size;
+                chunk_idx += 1;
+            };
         }
     }
 }
