@@ -7,9 +7,6 @@ use sharding_tests::contract_component::{
 };
 use sharding_tests::sharding::sharding::{Event as ShardingEvent, ShardingRequested};
 use sharding_tests::sharding::{IShardingDispatcher, IShardingDispatcherTrait};
-use sharding_tests::storage_commitment::{
-    IStorageCommitmentDispatcher, IStorageCommitmentDispatcherTrait,
-};
 use sharding_tests::test_contract::test_contract::{Event as TestContractEvent, GameFinished};
 use sharding_tests::test_contract::{ITestContractDispatcher, ITestContractDispatcherTrait};
 use snforge_std as snf;
@@ -30,43 +27,20 @@ struct TestSetup {
     sharding_contract_config_dispatcher: IConfigDispatcher,
     test_contract_dispatcher: ITestContractDispatcher,
     test_contract_component_dispatcher: IContractComponentDispatcher,
-    storage_commitment_dispatcher: IStorageCommitmentDispatcher,
 }
 
-/// Deploy StorageCommitment contract (from katana-tee) and authorize test as the caller.
-fn deploy_storage_commitment() -> ContractAddress {
-    let contract_class = snf::declare("StorageCommitment").unwrap().contract_class();
-    // StorageCommitment constructor requires deployer address (access control for
-    // set_authorized_caller).
-    let deployer = snf::test_address();
-    let calldata: Array<felt252> = array![deployer.into()];
-    let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
-
-    // Authorize the test itself as the caller for register_verified_commitment.
-    // In production, this is the KatanaTee contract address.
-    let dispatcher = IStorageCommitmentDispatcher { contract_address };
-    dispatcher.set_authorized_caller(snf::test_address());
-
-    contract_address
-}
-
-/// Deploy sharding contract with owner and storage_commitment_registry
-fn deploy_sharding(
-    owner: ContractAddress, storage_commitment_registry: ContractAddress,
-) -> (ContractAddress, EventSpy) {
+/// Deploy sharding contract with owner
+fn deploy_sharding(owner: ContractAddress) -> (ContractAddress, EventSpy) {
     let contract_class = snf::declare("sharding").unwrap().contract_class();
-    let calldata: Array<felt252> = array![owner.into(), storage_commitment_registry.into()];
+    let calldata: Array<felt252> = array![owner.into()];
     let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
     let spy = snf::spy_events();
     (contract_address, spy)
 }
 
 fn setup() -> TestSetup {
-    // Deploy storage_commitment first (required by sharding)
-    let storage_commitment = deploy_storage_commitment();
-
-    // Deploy the sharding contract with storage_commitment_registry
-    let (sharding, mut sharding_spy) = deploy_sharding(OWNER, storage_commitment);
+    // Deploy the sharding contract
+    let (sharding, mut sharding_spy) = deploy_sharding(OWNER);
 
     // Deploy the test contract
     let (test_contract, mut test_spy) = deploy_contract_with_owner(OWNER, "test_contract");
@@ -85,10 +59,6 @@ fn setup() -> TestSetup {
         .register_operator(test_contract_component_dispatcher.contract_address);
     snf::stop_cheat_caller_address(sharding_contract_config_dispatcher.contract_address);
 
-    let storage_commitment_dispatcher = IStorageCommitmentDispatcher {
-        contract_address: storage_commitment,
-    };
-
     // Set a known block number so fork_block_number=0 works in all tests
     snf::start_cheat_block_number(sharding, 0);
 
@@ -99,7 +69,6 @@ fn setup() -> TestSetup {
         sharding_contract_config_dispatcher,
         test_contract_dispatcher,
         test_contract_component_dispatcher,
-        storage_commitment_dispatcher,
     }
 }
 
@@ -140,9 +109,8 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
     let expected_event = ShardingRequested {
         game_contract: setup.test_contract_component_dispatcher.contract_address,
         shard_id: shard_id,
-        chunk_index: 0,
-        total_chunks: 1,
-        storage_slots: array![contract_slots_changes].span(),
+        entities: [].span(),
+        entity_key_chunks: 0,
     };
 
     setup
@@ -157,6 +125,23 @@ fn initialize_shard(mut setup: TestSetup, crd_type: CRDType) -> TestSetup {
         );
 
     setup
+}
+
+/// Apply storage changes via the component's update_shard_state.
+/// Cheats caller to be the sharding proxy address (required by component authorization).
+fn settle_via_component(
+    ref setup: TestSetup,
+    storage_changes: Array<(felt252, felt252)>,
+    shard_id: felt252,
+) {
+    snf::start_cheat_caller_address(
+        setup.test_contract_component_dispatcher.contract_address,
+        setup.shard_dispatcher.contract_address,
+    );
+    setup
+        .test_contract_component_dispatcher
+        .update_shard_state(shard_id, storage_changes);
+    snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
 }
 
 #[test]
@@ -177,11 +162,11 @@ fn test_update_state() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
-    // Apply the state update via TEE settlement
+    // Apply the state update via component settlement
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -203,7 +188,7 @@ fn test_update_state() {
     let storage_changes2: Array<(felt252, felt252)> = array![
         (counter_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes2, 2);
 
     let events = setup.test_spy.get_events();
     println!("events: {:?}", events);
@@ -257,11 +242,11 @@ fn test_update_state_with_add_operation() {
         .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Apply the state update with Add operation via TEE
+    // Apply the state update with Add operation
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify that the counter was incremented by 5 to become 15
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -288,11 +273,11 @@ fn test_update_state_with_set_operation() {
         .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Apply the state update with Set operation via TEE
+    // Apply the state update with Set operation
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify that the counter was set to 5, replacing the previous value of 20
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -318,11 +303,11 @@ fn test_multiple_crd_operations() {
         .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Apply state update with SetLock operation via TEE
+    // Apply state update with SetLock operation
     let storage_changes: Array<(felt252, felt252)> = array![
         (setlock_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify counter is 5 after update
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -345,7 +330,7 @@ fn test_multiple_crd_operations() {
     let storage_changes: Array<(felt252, felt252)> = array![
         (add_slot, 10), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes, 2);
 
     // Verify counter is 10 after Add operation (delta = 10 - 5 = 5, new = 5 + 5 = 10)
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -362,11 +347,11 @@ fn test_multiple_crd_operations() {
         .get_storage_slots(CRDType::Set((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // Apply state update with Set operation via TEE
+    // Apply state update with Set operation
     let storage_changes: Array<(felt252, felt252)> = array![
         (set_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 3, 0xfff);
+    settle_via_component(ref setup, storage_changes, 3);
 
     // Verify counter is 5 after Set operation (overwriting previous value)
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -598,7 +583,7 @@ fn test_two_times_set() {
     println!("All valid CRD combinations passed");
 }
 
-#[should_panic(expected: ('Sharding: Shard not active',))]
+#[should_panic(expected: ('Component: No storage changes',))]
 #[test]
 fn test_too_many_setlock_updates() {
     let mut setup = setup();
@@ -613,31 +598,22 @@ fn test_too_many_setlock_updates() {
         .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // First update_state via TEE - should work
+    // First settlement - should work
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state - should fail: shard already deactivated by proxy
-    // (fails at active_shards check before commitment verification)
+    // Second settlement - should fail: slots already unlocked
     let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 5)];
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes2.clone(), [].span(), array![], array![], 1, 0xabc, 0, 10,
-        );
+    settle_via_component(ref setup, storage_changes2, 1);
 }
 
-#[should_panic(expected: ('Sharding: Shard not active',))]
+#[should_panic(expected: ('Component: No storage changes',))]
 #[test]
 fn test_too_many_add_updates() {
     let mut setup = setup();
@@ -652,27 +628,19 @@ fn test_too_many_add_updates() {
         .get_storage_slots(CRDType::Add((0.try_into().unwrap(), 0.try_into().unwrap())))
         .slot();
 
-    // First update_state via TEE - should work
+    // First settlement - should work
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state - should fail: shard already deactivated by proxy
+    // Second settlement - should fail: slots already unlocked
     let storage_changes2: Array<(felt252, felt252)> = array![(counter_slot, 5)];
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes2.clone(), [].span(), array![], array![], 1, 0xabc, 0, 10,
-        );
+    settle_via_component(ref setup, storage_changes2, 1);
 }
 
 #[test]
@@ -706,21 +674,21 @@ fn test_two_times_init_add_and_two_updates() {
 
     snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
 
-    // First update_state via TEE - settle shard 1
+    // First settlement - settle shard 1
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 5, "Counter is not updated correctly");
 
-    // Second update_state via TEE - settle shard 2 (each shard has its own active_shards entry)
+    // Second settlement - settle shard 2 (each shard has its own active_shards entry)
     let storage_changes2: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes2, 2);
 
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 10, "Counter is not updated correctly");
@@ -749,11 +717,11 @@ fn test_multiple_initializations_and_updates() {
         );
     snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
 
-    // First update_state via TEE
+    // First settlement
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Verify counter is updated
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -770,11 +738,11 @@ fn test_multiple_initializations_and_updates() {
         );
     snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
 
-    // Second update_state via TEE
+    // Second settlement
     let storage_changes2: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes2, 2);
 
     // Verify counter is updated again
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -791,11 +759,11 @@ fn test_multiple_initializations_and_updates() {
         );
     snf::stop_cheat_caller_address(setup.test_contract_component_dispatcher.contract_address);
 
-    // Third update_state via TEE
+    // Third settlement
     let storage_changes3: Array<(felt252, felt252)> = array![
         (counter_slot, 5), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes3, 3, 0xfff);
+    settle_via_component(ref setup, storage_changes3, 3);
 
     // Verify counter is updated again
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -822,11 +790,11 @@ fn lock_and_unlock_storage() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
-    // Apply the state update via TEE settlement
+    // Apply the state update via settlement
     let storage_changes: Array<(felt252, felt252)> = array![
         (lock_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Counter is NOT updated because it's locked
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -843,7 +811,7 @@ fn lock_and_unlock_storage() {
     let storage_changes2: Array<(felt252, felt252)> = array![
         (lock_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes2, 2);
 }
 
 #[test]
@@ -866,11 +834,11 @@ fn unlocking_lock_when_no_update() {
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 0, "Counter is not set");
 
-    // Apply the state update via TEE settlement
+    // Apply the state update via settlement
     let storage_changes: Array<(felt252, felt252)> = array![
         (set_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes, 1, 0xabc);
+    settle_via_component(ref setup, storage_changes, 1);
 
     // Counter is NOT updated because set was sent but Lock was initialized
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -884,7 +852,7 @@ fn unlocking_lock_when_no_update() {
     let storage_changes2: Array<(felt252, felt252)> = array![
         (set_slot, expected_slot_value), (NOT_LOCKED_SLOT_ADDRESS, NOT_LOCKED_SLOT_VALUE),
     ];
-    tee_update_with_commitment(ref setup, storage_changes2, 2, 0xdef);
+    settle_via_component(ref setup, storage_changes2, 2);
 }
 
 #[should_panic(expected: ('Component: Slot locked by shard',))]
@@ -899,233 +867,6 @@ fn two_times_lock() {
 
     // Initialize again with Lock type
     initialize_shard(setup, CRDType::Lock((0.try_into().unwrap(), 0.try_into().unwrap())));
-}
-
-// =============================================================================
-// TEE commitment helpers
-// =============================================================================
-
-/// Compute storage commitment: poseidon_hash(keys || values)
-fn compute_commitment(storage_changes: Span<(felt252, felt252)>) -> felt252 {
-    let mut data: Array<felt252> = ArrayTrait::new();
-    for change in storage_changes {
-        let (key, _) = *change;
-        data.append(key);
-    }
-    for change in storage_changes {
-        let (_, value) = *change;
-        data.append(value);
-    }
-    poseidon_hash_span(data.span())
-}
-
-/// Compute full commitment hash matching StorageCommitment.verify() logic
-fn compute_full_commitment(
-    storage_commitment: felt252,
-    contract_address: ContractAddress,
-    nonce: u64,
-    global_state_root: felt252,
-    end_block_number: u64,
-) -> felt252 {
-    let mut data: Array<felt252> = ArrayTrait::new();
-    data.append(storage_commitment);
-    data.append(contract_address.into());
-    data.append(nonce.into());
-    data.append(global_state_root);
-    data.append(end_block_number.into());
-    poseidon_hash_span(data.span())
-}
-
-// =============================================================================
-// TEE-based update tests (update_contract_state_tee)
-// =============================================================================
-
-#[test]
-fn test_update_contract_state_tee_success() {
-    let mut setup = setup();
-
-    // Initialize the shard with SetLock operation type
-    let mut setup = initialize_shard(
-        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
-    );
-
-    let counter = setup.test_contract_dispatcher.get_counter();
-    assert!(counter == 0, "Counter should start at 0");
-
-    // Get the storage slot for counter
-    let counter_slot = setup
-        .test_contract_dispatcher
-        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
-        .slot();
-
-    // Create storage changes array (key, value pairs)
-    let storage_changes: Array<(felt252, felt252)> = array![(counter_slot, 42)];
-
-    // Compute and register the commitment
-    let global_state_root: felt252 = 0xabc;
-    let storage_commitment = compute_commitment(storage_changes.span());
-    let nonce = setup
-        .storage_commitment_dispatcher
-        .get_nonce(setup.test_contract_dispatcher.contract_address);
-    let full_commitment = compute_full_commitment(
-        storage_commitment,
-        setup.test_contract_dispatcher.contract_address,
-        nonce,
-        global_state_root,
-        10,
-    );
-    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
-
-    // Apply the state update using TEE-based method
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address,
-            storage_changes.clone(), [].span(), array![], array![],
-            1,
-            global_state_root,
-            0,
-            10,
-        );
-    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
-
-    // Verify counter was updated
-    let counter = setup.test_contract_dispatcher.get_counter();
-    assert!(counter == 42, "Counter should be 42 after TEE update");
-    println!("Counter after TEE update: {:?}", counter);
-}
-
-#[test]
-#[should_panic(expected: ('Sharding: Shard not active',))]
-fn test_update_contract_state_tee_no_shard() {
-    let setup = setup();
-
-    let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
-
-    // No shard initialized — should fail with explicit error
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes.clone(), [].span(), array![], array![], 1, 0, 0, 10,
-        );
-}
-
-#[test]
-#[should_panic(expected: ('Sharding: Shard not active',))]
-fn test_update_contract_state_tee_wrong_shard_id() {
-    let mut setup = setup();
-
-    // Initialize with shard_id = 1
-    let mut setup = initialize_shard(
-        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
-    );
-
-    let storage_changes: Array<(felt252, felt252)> = array![(0x1, 0x100)];
-
-    // Should fail - wrong shard_id (2 != 1)
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address,
-            storage_changes.clone(), [].span(), array![], array![],
-            2,
-            0,
-            0,
-            10 // wrong shard_id!
-        );
-}
-
-#[test]
-#[should_panic(expected: ('Sharding: Empty settlement',))]
-fn test_update_contract_state_tee_empty_changes() {
-    let mut setup = setup();
-
-    let mut setup = initialize_shard(
-        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
-    );
-
-    let storage_changes: Array<(felt252, felt252)> = array![];
-
-    // Should fail - empty storage changes
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address, storage_changes.clone(), [].span(), array![], array![], 1, 0, 0, 10,
-        );
-}
-
-#[test]
-fn test_update_contract_state_tee_multiple_slots() {
-    let mut setup = setup();
-
-    // Initialize the shard with SetLock operation type
-    let mut setup = initialize_shard(
-        setup, CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())),
-    );
-
-    // Get the storage slot for counter
-    let counter_slot = setup
-        .test_contract_dispatcher
-        .get_storage_slots(CRDType::SetLock((0.try_into().unwrap(), 0.try_into().unwrap())))
-        .slot();
-
-    // Create storage changes with multiple slots
-    let storage_changes: Array<(felt252, felt252)> = array![
-        (counter_slot, 100), (0x999, 200) // This slot may not be locked, so it might be ignored
-    ];
-
-    // Compute and register the commitment
-    let global_state_root: felt252 = 0xabc;
-    let storage_commitment = compute_commitment(storage_changes.span());
-    let nonce = setup
-        .storage_commitment_dispatcher
-        .get_nonce(setup.test_contract_dispatcher.contract_address);
-    let full_commitment = compute_full_commitment(
-        storage_commitment,
-        setup.test_contract_dispatcher.contract_address,
-        nonce,
-        global_state_root,
-        10,
-    );
-    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
-
-    // Apply the state update using TEE-based method
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address,
-            storage_changes.clone(), [].span(), array![], array![],
-            1,
-            global_state_root,
-            0,
-            10,
-        );
-    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
-
-    // Verify counter was updated
-    let counter = setup.test_contract_dispatcher.get_counter();
-    assert!(counter == 100, "Counter should be 100 after TEE update with multiple slots");
-    println!("Counter after TEE multi-slot update: {:?}", counter);
 }
 
 // =============================================================================
@@ -1146,45 +887,8 @@ fn initialize_shard_multi(mut setup: TestSetup, slots: Span<CRDType>) -> TestSet
     setup
 }
 
-/// Helper: compute + register commitment and call update_contract_state_tee
-fn tee_update_with_commitment(
-    ref setup: TestSetup,
-    storage_changes: Array<(felt252, felt252)>,
-    shard_id: felt252,
-    global_state_root: felt252,
-) {
-    let storage_commitment = compute_commitment(storage_changes.span());
-    let nonce = setup
-        .storage_commitment_dispatcher
-        .get_nonce(setup.test_contract_dispatcher.contract_address);
-    let full_commitment = compute_full_commitment(
-        storage_commitment,
-        setup.test_contract_dispatcher.contract_address,
-        nonce,
-        global_state_root,
-        10,
-    );
-    setup.storage_commitment_dispatcher.register_verified_commitment(full_commitment);
-
-    snf::start_cheat_caller_address(
-        setup.shard_dispatcher.contract_address,
-        setup.test_contract_component_dispatcher.contract_address,
-    );
-    setup
-        .shard_dispatcher
-        .update_contract_state_tee(
-            setup.test_contract_dispatcher.contract_address,
-            storage_changes.clone(), [].span(), array![], array![],
-            shard_id,
-            global_state_root,
-            0,
-            10,
-        );
-    snf::stop_cheat_caller_address(setup.shard_dispatcher.contract_address);
-}
-
 #[test]
-fn test_tee_multiple_registered_slots() {
+fn test_multiple_registered_slots() {
     let mut setup = setup();
 
     // Register 2 SetLock slots: counter and score
@@ -1201,7 +905,7 @@ fn test_tee_multiple_registered_slots() {
 
     let mut setup = initialize_shard_multi(setup, array![counter_slot, score_slot].span());
 
-    // Update both slots via TEE
+    // Update both slots
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot.slot(), 42), (score_slot.slot(), 100),
     ];
@@ -1209,7 +913,7 @@ fn test_tee_multiple_registered_slots() {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    tee_update_with_commitment(ref setup, storage_changes, shard_id, 0xabc);
+    settle_via_component(ref setup, storage_changes, shard_id);
 
     // Verify both slots updated
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -1219,7 +923,7 @@ fn test_tee_multiple_registered_slots() {
 }
 
 #[test]
-fn test_tee_mixed_crd_types() {
+fn test_mixed_crd_types() {
     let mut setup = setup();
 
     // counter=SetLock (overwrite), score=Add (accumulate)
@@ -1247,7 +951,7 @@ fn test_tee_mixed_crd_types() {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    tee_update_with_commitment(ref setup, storage_changes, shard_id, 0xabc);
+    settle_via_component(ref setup, storage_changes, shard_id);
 
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 10, "Counter should be overwritten to 10");
@@ -1256,7 +960,7 @@ fn test_tee_mixed_crd_types() {
 }
 
 #[test]
-fn test_tee_multiple_registered_slots_mixed() {
+fn test_multiple_registered_slots_mixed() {
     let mut setup = setup();
 
     // Register counter=SetLock and score=Add
@@ -1276,7 +980,7 @@ fn test_tee_multiple_registered_slots_mixed() {
     // Set initial score via raw storage write
     setup.test_contract_dispatcher.write_storage_slot(score_slot.slot(), 10);
 
-    // Update both slots via TEE
+    // Update both slots
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot.slot(), 99), (score_slot.slot(), 5),
     ];
@@ -1284,7 +988,7 @@ fn test_tee_multiple_registered_slots_mixed() {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    tee_update_with_commitment(ref setup, storage_changes, shard_id, 0xabc);
+    settle_via_component(ref setup, storage_changes, shard_id);
 
     let counter = setup.test_contract_dispatcher.get_counter();
     assert!(counter == 99, "Counter should be overwritten to 99");
@@ -1293,7 +997,7 @@ fn test_tee_multiple_registered_slots_mixed() {
 }
 
 #[test]
-fn test_tee_all_crd_types_at_once() {
+fn test_all_crd_types_at_once() {
     let mut setup = setup();
 
     // Register all 4 CRD types at once:
@@ -1326,7 +1030,7 @@ fn test_tee_all_crd_types_at_once() {
     setup.test_contract_dispatcher.write_storage_slot(score_slot.slot(), 100);
     setup.test_contract_dispatcher.write_storage_slot(health_slot.slot(), 50);
 
-    // Update all slots via TEE
+    // Update all slots
     let storage_changes: Array<(felt252, felt252)> = array![
         (counter_slot.slot(), 7), (score_slot.slot(), 30), (health_slot.slot(), 80),
     ];
@@ -1334,7 +1038,7 @@ fn test_tee_all_crd_types_at_once() {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    tee_update_with_commitment(ref setup, storage_changes, shard_id, 0xdef);
+    settle_via_component(ref setup, storage_changes, shard_id);
 
     // Verify each CRD type behaved correctly:
     // SetLock: counter = 7 (overwritten from 0)
@@ -1383,7 +1087,7 @@ fn test_tee_all_crd_types_at_once() {
         .shard_dispatcher
         .get_shard_id(setup.test_contract_dispatcher.contract_address);
 
-    tee_update_with_commitment(ref setup, storage_changes2, shard_id2, 0xfff);
+    settle_via_component(ref setup, storage_changes2, shard_id2);
 
     // Set: counter = 1 (overwritten)
     let counter = setup.test_contract_dispatcher.get_counter();
@@ -1399,7 +1103,7 @@ fn test_tee_all_crd_types_at_once() {
 }
 
 // =============================================================================
-// compute_commitment tests
+// compute_commitment tests (pure hash computation, no contract interaction)
 // =============================================================================
 
 use core::poseidon::poseidon_hash_span;
