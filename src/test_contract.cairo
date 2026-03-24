@@ -34,8 +34,8 @@ pub trait ITestContract<TContractState> {
 pub mod test_contract {
     use core::poseidon::PoseidonImpl;
     use core::starknet::SyscallResultTrait;
-    use openzeppelin::access::ownable::OwnableComponent as ownable_cpt;
-    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
+    use openzeppelin_access::ownable::OwnableComponent as ownable_cpt;
+    use openzeppelin_access::ownable::OwnableComponent::InternalTrait as OwnableInternal;
     use sharding_tests::contract_component::{CRDType, contract_component};
     use starknet::event::EventEmitter;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
@@ -106,7 +106,7 @@ pub mod test_contract {
             // Convert to u256 for modulo operation (felt252 doesn't support %)
             let counter_u256: u256 = self.counter.read().into();
             if counter_u256 > 0 && counter_u256 % 3 == 0 {
-                self.contract_component.end_shard();
+                self.contract_component.end_current_shard();
                 self.emit(GameFinished { caller });
             }
         }
