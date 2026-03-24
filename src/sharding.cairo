@@ -91,6 +91,7 @@ pub mod sharding {
         ShardingRequested: ShardingRequested,
         ShardingEntityKeysChunk: ShardingEntityKeysChunk,
         ShardFinished: ShardFinished,
+        ShardCancelled: ShardCancelled,
         #[flat]
         OwnableEvent: ownable_cpt::Event,
         #[flat]
@@ -119,6 +120,13 @@ pub mod sharding {
 
     #[derive(Drop, starknet::Event)]
     pub struct ShardFinished {
+        #[key]
+        pub game_contract: ContractAddress,
+        pub shard_id: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ShardCancelled {
         #[key]
         pub game_contract: ContractAddress,
         pub shard_id: felt252,
@@ -184,6 +192,8 @@ pub mod sharding {
                 contract_address: contract_address,
             };
             settlement_dispatcher.cancel_shard(shard_id);
+
+            self.emit(ShardCancelled { game_contract: contract_address, shard_id });
         }
 
         fn get_shard_id(ref self: ContractState, contract_address: ContractAddress) -> felt252 {
